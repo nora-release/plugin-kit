@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 1,
+  "id": "com.nora.example.native",
+  "name": "Native Plugin Example",
+  "version": "1.0.0",
+  "summary": "A native SwiftUI panel with Echo and host information commands.",
+  "publisher": "Nora",
+  "extensionBundleIdentifier": "com.nora.example.native.extension",
+  "permissions": ["hostInfo"],
+  "panels": [
+    {"id": "com.nora.example.native.panel", "title": "Native Example", "systemImage": "puzzlepiece.extension"}
+  ],
+  "commands": [
+    {
+      "id": "com.nora.example.native.echo",
+      "title": "Echo",
+      "description": "Returns the supplied text without modifying files.",
+      "inputSchemaJSON": "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"],\"additionalProperties\":false}",
+      "readOnly": true
+    },
+    {
+      "id": "com.nora.example.native.hostInfo",
+      "title": "Get Nora Info",
+      "description": "Requests application information from Nora using the hostInfo permission.",
+      "inputSchemaJSON": "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",
+      "readOnly": true
+    }
+  ]
+}

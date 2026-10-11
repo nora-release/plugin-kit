@@ -1,0 +1,78 @@
+name: SDK CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Release tag to compare with sdk-version.json
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Swift (${{ matrix.toolchain }})
+    runs-on: macos-15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [minimum, default]
+    steps:
+      - name: Checkout SDK
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Select Swift 6.1 for minimum compatibility
+        if: matrix.toolchain == 'minimum'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d /Applications/Xcode_16.3.app/Contents/Developer
+          printf 'DEVELOPER_DIR=/Applications/Xcode_16.3.app/Contents/Developer\n' >> "$GITHUB_ENV"
+      - name: Verify Swift toolchain and SDK version
+        env:
+          SDK_RELEASE_TAG: ${{ inputs.release_tag || '' }}
+          SDK_TOOLCHAIN: ${{ matrix.toolchain }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
+          const swift = execFileSync('swift', ['--version'], { encoding: 'utf8' });
+          console.log(swift.trim());
+          const toolchain = swift.match(/Swift version (\d+)\.(\d+)/);
+          assert(toolchain && (Number(toolchain[1]) > 6 || (Number(toolchain[1]) === 6 && Number(toolchain[2]) >= 1)), 'Swift 6.1 or newer is required.');
+          if (process.env.SDK_TOOLCHAIN === 'minimum') {
+            assert.equal(`${toolchain[1]}.${toolchain[2]}`, '6.1', 'The minimum compatibility job must use Swift 6.1.');
+          }
+          assert.equal(Number(process.versions.node.split('.')[0]), 24, 'Node 24 is required.');
+          const sdk = JSON.parse(readFileSync('sdk-version.json', 'utf8'));
+          assert.equal(sdk.schemaVersion, 1, 'Unsupported SDK version file schema.');
+          assert.equal(sdk.apiVersion, 1, 'Unsupported plugin API version.');
+          const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+          assert.equal(typeof sdk.version, 'string', 'SDK version must be a string.');
+          assert(sdk.version.trim() === sdk.version && semver.test(sdk.version), 'SDK version must be a strict semantic version.');
+          if (process.env.SDK_RELEASE_TAG) {
+            assert.equal(process.env.SDK_RELEASE_TAG, `v${sdk.version}`, 'Release tag must match sdk-version.json.');
+          }
+          NODE
+      - name: Build Swift Package
+        run: make build
+      - name: Test Swift Package and marketplace tools
+        run: make test
+      - name: Package the native example with ad hoc signing
+        run: make example

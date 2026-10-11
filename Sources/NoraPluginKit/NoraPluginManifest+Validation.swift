@@ -1,0 +1,76 @@
+import Foundation
+
+public enum NoraPluginValidationError: Error, LocalizedError, Equatable, Sendable {
+    case invalid(String, String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .invalid(field, reason): "Invalid plugin \(field): \(reason)."
+        }
+    }
+}
+
+extension NoraPluginManifest {
+    public func validate() throws {
+        guard schemaVersion == 1, apiVersion == 1 else {
+            throw NoraPluginValidationError.invalid("version", "only schemaVersion 1 and apiVersion 1 are supported")
+        }
+        try Self.identifier(id, field: "id")
+        try Self.identifier(extensionBundleIdentifier, field: "extensionBundleIdentifier")
+        try Self.text(name, field: "name", maximum: 128)
+        try Self.text(publisher, field: "publisher", maximum: 128)
+        try Self.text(summary, field: "summary", maximum: 2048)
+        guard NoraPluginVersion(version) != nil else {
+            throw NoraPluginValidationError.invalid("version", "must be a semantic version such as 1.0.0")
+        }
+        guard Set(permissions).count == permissions.count else {
+            throw NoraPluginValidationError.invalid("permissions", "contains duplicates")
+        }
+        guard panels.count <= 32, commands.count <= 128 else {
+            throw NoraPluginValidationError.invalid("contributions", "exceeds 32 panels or 128 commands")
+        }
+        var identifiers = Set<String>()
+        for panel in panels {
+            try validateContributionID(panel.id, seen: &identifiers)
+            try Self.text(panel.title, field: "panel title", maximum: 128)
+            try Self.text(panel.systemImage, field: "panel systemImage", maximum: 128)
+        }
+        for command in commands {
+            try validateContributionID(command.id, seen: &identifiers)
+            try Self.text(command.title, field: "command title", maximum: 128)
+            try Self.text(command.description, field: "command description", maximum: 4096)
+            guard command.inputSchemaJSON.utf8.count <= Self.maximumSchemaBytes else {
+                throw NoraPluginValidationError.invalid("command schema", "exceeds 64 KiB")
+            }
+            guard let schema = try? JSONSerialization.jsonObject(with: Data(command.inputSchemaJSON.utf8)) as? [String: Any],
+                  schema["type"] as? String == "object" else {
+                throw NoraPluginValidationError.invalid("command schema", "must describe a JSON object")
+            }
+        }
+        guard try JSONEncoder().encode(self).count <= Self.maximumManifestBytes else {
+            throw NoraPluginValidationError.invalid("manifest", "exceeds 512 KiB")
+        }
+    }
+
+    private func validateContributionID(_ value: String, seen: inout Set<String>) throws {
+        try Self.identifier(value, field: "contribution id")
+        guard value.hasPrefix(id + "."), seen.insert(value).inserted else {
+            throw NoraPluginValidationError.invalid("contribution id", "must be unique and start with \(id).")
+        }
+    }
+
+    private static func identifier(_ value: String, field: String) throws {
+        let pattern = #"^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+$"#
+        guard value.utf8.count <= 255, value.range(of: pattern, options: .regularExpression) != nil,
+              !value.contains(where: { $0.isWhitespace }) else {
+            throw NoraPluginValidationError.invalid(field, "must be a dot-separated identifier")
+        }
+    }
+
+    private static func text(_ value: String, field: String, maximum: Int) throws {
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              value.utf8.count <= maximum, !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw NoraPluginValidationError.invalid(field, "must be nonempty plain text of at most \(maximum) bytes")
+        }
+    }
+}

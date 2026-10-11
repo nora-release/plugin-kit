@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nora native plugin manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "version", "summary", "publisher", "extensionBundleIdentifier"],
+  "properties": {
+    "schemaVersion": {"const": 1, "default": 1},
+    "apiVersion": {"const": 1, "default": 1},
+    "id": {"$ref": "#/$defs/identifier"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "version": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$"
+    },
+    "summary": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "publisher": {"type": "string", "minLength": 1, "maxLength": 128},
+    "extensionBundleIdentifier": {"$ref": "#/$defs/identifier"},
+    "permissions": {"type": "array", "uniqueItems": true, "items": {"enum": ["hostInfo", "notifications"]}, "default": []},
+    "panels": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/panel"}, "default": []},
+    "commands": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/command"}, "default": []}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "maxLength": 255, "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*(?:\\.[A-Za-z0-9][A-Za-z0-9-]*)+$"},
+    "panel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "systemImage"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier", "description": "Must begin with the manifest id followed by a dot, and be unique across panels and commands."},
+        "title": {"type": "string", "minLength": 1, "maxLength": 128},
+        "systemImage": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "description", "inputSchemaJSON", "readOnly"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier", "description": "Must begin with the manifest id followed by a dot, and be unique across panels and commands."},
+        "title": {"type": "string", "minLength": 1, "maxLength": 128},
+        "description": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "inputSchemaJSON": {"type": "string", "maxLength": 65536, "description": "A JSON schema with type object; at most 64 KiB UTF-8."},
+        "readOnly": {"type": "boolean"}
+      }
+    }
+  }
+}
