@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "apiVersion": 1,
+  "runtime": "script",
+  "entryPoint": "plugin.js",
+  "id": "com.example.nora.hello",
+  "name": "Hello Nora",
+  "version": "0.1.0",
+  "summary": "A native panel and an Echo command, built with JavaScript.",
+  "publisher": "Example Publisher",
+  "networkDomains": [],
+  "permissions": [],
+  "panels": [{"id": "com.example.nora.hello.panel", "title": "Hello Nora", "systemImage": "puzzlepiece.extension"}],
+  "commands": [{
+    "id": "com.example.nora.hello.echo",
+    "title": "Echo",
+    "description": "Returns the supplied text.",
+    "inputSchemaJSON": "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"],\"additionalProperties\":false}",
+    "readOnly": true
+  }]
+}

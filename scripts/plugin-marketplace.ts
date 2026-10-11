@@ -1,18 +1,20 @@
+#!/usr/bin/env node
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, posix, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { inflateRawSync } from 'node:zlib'
 
 export type PluginManifest = {
-  schemaVersion: 1; apiVersion: 1; id: string; name: string; version: string; summary: string; publisher: string
-  extensionBundleIdentifier: string; permissions: string[]
+  schemaVersion: 1 | 2; apiVersion: 1; id: string; name: string; version: string; summary: string; publisher: string
+  extensionBundleIdentifier?: string; runtime?: 'nativeExtension' | 'script'; entryPoint?: string; networkDomains?: string[]; permissions: string[]
   panels: { id: string; title: string; systemImage: string }[]
   commands: { id: string; title: string; description: string; inputSchemaJSON: string; readOnly: boolean }[]
 }
 export type RegistryEntry = {
   manifest: PluginManifest; downloadURL: string; sha256: string
-  repositoryURL: string; releaseTag: string; teamIdentifier: string
+  repositoryURL: string; releaseTag: string; teamIdentifier?: string
 }
 export type Registry = { schemaVersion: 1; name: string; plugins: RegistryEntry[] }
 const maximumArchiveBytes = 256 * 1024 * 1024
@@ -42,13 +44,28 @@ function array(value: unknown, field: string, maximum: number): unknown[] {
 
 export function validateManifest(value: unknown): PluginManifest {
   const manifest = object(value)
-  requireValue(manifest.schemaVersion === 1 && manifest.apiVersion === 1, 'Only plugin schemaVersion 1 and apiVersion 1 are supported')
-  id(manifest.id, 'id'); id(manifest.extensionBundleIdentifier, 'extensionBundleIdentifier')
+  const script = manifest.runtime === 'script'
+  requireValue(manifest.apiVersion === 1 && (script ? manifest.schemaVersion === 2 : manifest.schemaVersion === 1 && (manifest.runtime === undefined || manifest.runtime === 'nativeExtension')), 'Requires native schemaVersion 1 or script schemaVersion 2 with apiVersion 1')
+  id(manifest.id, 'id')
+  if (script) {
+    requireValue(manifest.extensionBundleIdentifier === undefined || manifest.extensionBundleIdentifier === '', 'Script plugins cannot contain native extensions')
+    requireValue(typeof manifest.entryPoint === 'string' && Buffer.byteLength(manifest.entryPoint) <= 1024
+      && manifest.entryPoint.endsWith('.js') && !/[\\\p{Cc}]/u.test(manifest.entryPoint)
+      && manifest.entryPoint.split('/').every(part => part !== '' && part !== '.' && part !== '..'), 'entryPoint must be a relative JavaScript file path inside the plugin')
+    const domains = array(manifest.networkDomains ?? [], 'networkDomains', 64)
+    requireValue(new Set(domains).size === domains.length && domains.every(domain => typeof domain === 'string' && domain.length <= 253 && !/[^a-z0-9.-]/.test(domain)
+      && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/.test(domain)), 'networkDomains must contain unique exact lowercase hosts without schemes, ports, or wildcards')
+  } else {
+    id(manifest.extensionBundleIdentifier, 'extensionBundleIdentifier')
+    requireValue(manifest.entryPoint === undefined && (manifest.networkDomains === undefined || array(manifest.networkDomains, 'networkDomains', 0).length === 0), 'Script capabilities require a script plugin')
+  }
   text(manifest.name, 'name'); text(manifest.publisher, 'publisher'); text(manifest.summary, 'summary', 2048)
   text(manifest.version, 'version')
   requireValue(semver.test(manifest.version), 'version must be a strict semantic version')
-  const permissions = array(manifest.permissions, 'permissions', 2)
-  requireValue(new Set(permissions).size === permissions.length && permissions.every(value => value === 'hostInfo' || value === 'notifications'), 'Unknown or duplicate plugin permission')
+  const permissions = array(manifest.permissions, 'permissions', script ? 5 : 2)
+  const allowedPermissions = script ? ['hostInfo', 'notifications', 'network', 'credentials', 'openExternal'] : ['hostInfo', 'notifications']
+  requireValue(new Set(permissions).size === permissions.length && permissions.every(value => allowedPermissions.includes(value as string)), 'Unknown or duplicate plugin permission')
+  requireValue(!script || !((manifest.networkDomains as unknown[] | undefined)?.length) || permissions.includes('network'), 'networkDomains requires the network permission')
   const contributions = new Set<string>()
   const contribution = (value: unknown) => {
     const item = object(value)
@@ -84,7 +101,9 @@ export function validateEntry(value: unknown): RegistryEntry {
   const manifest = validateManifest(entry.manifest)
   const repository = repositoryPath(entry.repositoryURL)
   requireValue(entry.releaseTag === manifest.version || entry.releaseTag === `v${manifest.version}`, 'releaseTag must match the exact manifest version, optionally prefixed by v')
-  requireValue(typeof entry.teamIdentifier === 'string' && /^[A-Z0-9]{10}$/.test(entry.teamIdentifier), 'teamIdentifier must be a 10-character Apple Developer Team ID')
+  if (manifest.runtime !== 'script' || entry.teamIdentifier !== undefined) {
+    requireValue(typeof entry.teamIdentifier === 'string' && /^[A-Z0-9]{10}$/.test(entry.teamIdentifier), 'Native teamIdentifier must be a 10-character Apple Developer Team ID')
+  }
   requireValue(typeof entry.sha256 === 'string' && /^[a-f0-9]{64}$/.test(entry.sha256) && !/^0+$/.test(entry.sha256), 'sha256 must be a real lowercase SHA-256 digest')
   requireValue(typeof entry.downloadURL === 'string', 'downloadURL is required')
   const url = new URL(entry.downloadURL)
@@ -94,7 +113,7 @@ export function validateEntry(value: unknown): RegistryEntry {
   const asset = decodeURIComponent(url.pathname.slice(prefix.length))
   requireValue(/^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$/.test(asset), 'Release asset must be a ZIP with a simple filename')
   return { manifest, repositoryURL: entry.repositoryURL as string, releaseTag: entry.releaseTag as string,
-    teamIdentifier: entry.teamIdentifier, downloadURL: entry.downloadURL, sha256: entry.sha256 }
+    ...(entry.teamIdentifier === undefined ? {} : { teamIdentifier: entry.teamIdentifier as string }), downloadURL: entry.downloadURL, sha256: entry.sha256 }
 }
 
 export function validateRegistry(value: unknown): Registry {
@@ -139,7 +158,9 @@ export function manifestFromArchive(data: Buffer): PluginManifest {
   const roots = new Set<string>()
   const symlinks = new Set<string>()
   const paths: string[] = []
+  const regularFiles = new Map<string, number>()
   let manifest: PluginManifest | undefined
+  let manifestPath: string | undefined
   for (let index = 0; index < count; index += 1) {
     requireValue(offset + 46 <= end && data.readUInt32LE(offset) === 0x02014b50, 'Invalid ZIP directory')
     const flags = data.readUInt16LE(offset + 8), method = data.readUInt16LE(offset + 10)
@@ -164,6 +185,7 @@ export function manifestFromArchive(data: Buffer): PluginManifest {
     requireValue(start + compressed <= central && data.subarray(local + 30, local + 30 + nameLength).equals(nameBytes), 'ZIP entry boundaries do not match')
     const mode = data.readUInt32LE(offset + 38) >>> 16, type = mode & 0o170000
     requireValue([0, 0o040000, 0o100000, 0o120000].includes(type), 'Unsupported ZIP file type')
+    if ((type === 0 || type === 0o100000) && !name.endsWith('/')) regularFiles.set(name, size)
     if (type === 0o120000) {
       requireValue(size > 0 && size <= 4096 && !name.endsWith('/'), 'Invalid ZIP symbolic link')
       const compressedData = data.subarray(start, start + compressed)
@@ -175,16 +197,26 @@ export function manifestFromArchive(data: Buffer): PluginManifest {
       requireValue(resolved.startsWith(`${parts[0]}/`), 'ZIP symbolic link escapes its application')
       symlinks.add(normalized)
     }
-    if (parts[0] !== '__MACOSX' && parts.slice(1).join('/') === 'Contents/Resources/nora-plugin.json') {
+    if (parts[0] !== '__MACOSX' && ['Contents/Resources/nora-plugin.json', 'nora-plugin.json'].includes(parts.slice(1).join('/'))) {
       requireValue(!manifest && type !== 0o120000 && !name.endsWith('/') && size <= maximumManifestBytes, 'Invalid embedded manifest')
       const compressedData = data.subarray(start, start + compressed)
       const contents = method === 0 ? compressedData : inflateRawSync(compressedData, { maxOutputLength: maximumManifestBytes })
       requireValue(contents.length === size && crc32(contents) === checksum, 'Embedded manifest checksum does not match')
       manifest = validateManifest(JSON.parse(contents.toString('utf8')))
+      manifestPath = parts.slice(1).join('/')
     }
     offset = next
   }
-  requireValue(offset === end && roots.size === 1 && [...roots][0].endsWith('.app') && manifest, 'ZIP must contain one .app and its Nora manifest')
+  requireValue(offset === end && roots.size === 1 && manifest, 'ZIP must contain one plugin folder and its Nora manifest')
+  const root = [...roots][0]
+  if (manifest.runtime === 'script') {
+    requireValue(count <= 5000 && totalBytes <= 128 * 1024 * 1024, 'Script plugin exceeds 5000 files or 128 MiB')
+    requireValue(!root.endsWith('.app') && !root.endsWith('.appex') && manifestPath === 'nora-plugin.json' && symlinks.size === 0, 'Script ZIP must contain one ordinary plugin folder with a root manifest and no symbolic links')
+    const entrySize = regularFiles.get(`${root}/${manifest.entryPoint}`)
+    requireValue(entrySize !== undefined && entrySize <= 2 * 1024 * 1024, 'Script ZIP is missing its entryPoint or the JavaScript exceeds 2 MiB')
+  } else {
+    requireValue(root.endsWith('.app') && manifestPath === 'Contents/Resources/nora-plugin.json', 'Native ZIP must contain one .app and its Nora manifest')
+  }
   for (const path of paths) {
     const parts = path.split('/')
     for (let index = 1; index < parts.length; index += 1) requireValue(!symlinks.has(parts.slice(0, index).join('/')), 'ZIP entry passes through a symbolic link')
@@ -257,9 +289,16 @@ async function main(args: string[]): Promise<void> {
     else { requireValue(rest[index + 1] && !rest[index + 1].startsWith('--'), `Missing value for ${key}`); flags.set(key, rest[++index]) }
   }
   const required = (key: string) => { const value = flags.get(key); requireValue(value, `Missing ${key}`); return value }
+  if (command === 'package') {
+    const builder = resolve(dirname(fileURLToPath(import.meta.url)), 'build-script-plugin.py')
+    const result = spawnSync('python3', [builder, '--config', required('--config'), '--output', required('--output'), '--tag', required('--tag')], { stdio: 'inherit' })
+    if (result.error) throw result.error
+    requireValue(result.status === 0, 'Script plugin packaging failed')
+    return
+  }
   if (command === 'validate-manifest') {
     validateManifest(await readJSON(required('--manifest'), maximumManifestBytes))
-    console.log('Validated native plugin manifest')
+    console.log('Validated plugin manifest')
     return
   }
   if (command === 'generate' || command === 'validate') {
@@ -280,7 +319,7 @@ async function main(args: string[]): Promise<void> {
     const repository = repositoryPath(required('--repository'))
     const tag = required('--tag')
     const entry = validateEntry({ manifest, repositoryURL: `https://github.com/${repository}`, releaseTag: tag,
-      teamIdentifier: required('--team'), sha256: createHash('sha256').update(archive).digest('hex'),
+      ...(manifest.runtime === 'script' ? {} : { teamIdentifier: required('--team') }), sha256: createHash('sha256').update(archive).digest('hex'),
       downloadURL: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(filename)}` })
     verifyArchive(entry, archive)
     const directory = resolve(required('--output'))
@@ -291,17 +330,20 @@ async function main(args: string[]): Promise<void> {
     console.log(`Prepared release metadata for ${manifest.id}@${manifest.version}`)
     return
   }
-  if (command === 'init-registry' || command === 'init-author') {
+  if (['init-registry', 'init-author', 'init-script-author', 'init-native-author'].includes(command)) {
     const directory = resolve(required('--directory'))
     const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-    const template = resolve(sourceRoot, 'templates', command === 'init-registry' ? 'registry' : 'author')
+    const nativeAuthor = command === 'init-native-author'
+    const scriptAuthor = command === 'init-author' || command === 'init-script-author'
+    const template = resolve(sourceRoot, 'templates', command === 'init-registry' ? 'registry' : scriptAuthor ? 'script-author' : 'author')
     const files = command === 'init-registry'
       ? ['registry.json', 'marketplace.json', '.github/workflows/validate-marketplace.yml']
+      : scriptAuthor ? ['.gitignore', 'package.json', 'Makefile', 'nora-plugin.json', 'plugin.js', 'plugin-release.json', '.github/workflows/release-plugin.yml']
       : ['Package.swift', '.gitignore', 'nora-plugin.json', 'Sources/PluginHost/PluginHost.swift',
         'Sources/PluginExtension/NativePlugin.swift', 'plugin-release.json', '.github/workflows/release-plugin.yml']
     let dependency = ''
     let packageIdentity = 'plugin-kit'
-    if (command === 'init-author') {
+    if (nativeAuthor) {
       if (flags.has('--sdk-path')) {
         requireValue(!flags.has('--sdk-url') && !flags.has('--sdk-version'), '--sdk-path cannot be combined with --sdk-url or --sdk-version')
         const path = resolve(required('--sdk-path'))
@@ -323,17 +365,19 @@ async function main(args: string[]): Promise<void> {
     for (const file of files) {
       const destination = resolve(directory, file)
       await mkdir(dirname(destination), { recursive: true })
-      let contents = await readFile(resolve(template, file), 'utf8')
-      if (command === 'init-author' && file === 'Package.swift') {
+      let contents = await readFile(resolve(template, file === '.gitignore' ? 'gitignore' : file), 'utf8')
+      if (nativeAuthor && file === 'Package.swift') {
         contents = contents.replace('.package(url: "https://github.com/nora-release/plugin-kit.git", exact: "0.1.0")', dependency)
           .replace('package: "plugin-kit"', `package: ${JSON.stringify(packageIdentity)}`)
       }
       await writeFile(destination, contents, { flag: 'wx' })
     }
-    await mkdir(resolve(directory, 'scripts'), { recursive: true })
-    await writeFile(resolve(directory, 'NoraPluginKit-LICENSE'), await readFile(resolve(sourceRoot, 'LICENSE')), { flag: 'wx' })
-    await writeFile(resolve(directory, 'scripts/plugin-marketplace.ts'), await readFile(fileURLToPath(import.meta.url)), { flag: 'wx' })
-    if (command === 'init-author') {
+    if (!scriptAuthor) {
+      await mkdir(resolve(directory, 'scripts'), { recursive: true })
+      await writeFile(resolve(directory, 'NoraPluginKit-LICENSE'), await readFile(resolve(sourceRoot, 'LICENSE')), { flag: 'wx' })
+      await writeFile(resolve(directory, 'scripts/plugin-marketplace.ts'), await readFile(fileURLToPath(import.meta.url)), { flag: 'wx' })
+    }
+    if (nativeAuthor) {
       for (const file of ['publish-native-plugin.sh', 'build-distribution.py']) {
         await writeFile(resolve(directory, 'scripts', file), await readFile(resolve(sourceRoot, 'scripts', file)), { flag: 'wx', mode: 0o755 })
       }
@@ -341,7 +385,7 @@ async function main(args: string[]): Promise<void> {
     console.log(`Created ${command === 'init-registry' ? 'registry' : 'author release'} files in ${directory}`)
     return
   }
-  throw new Error('Commands: generate, validate, validate-manifest, release-entry, init-registry, init-author')
+  throw new Error('Commands: package, generate, validate, validate-manifest, release-entry, init-registry, init-author (script), init-script-author, init-native-author')
 }
 
 export function runMarketplaceCLI(args = process.argv.slice(2)): void {

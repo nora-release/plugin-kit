@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Nora native plugin manifest",
+  "title": "Nora plugin manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "name", "version", "summary", "publisher", "extensionBundleIdentifier"],
+  "required": ["id", "name", "version", "summary", "publisher"],
   "properties": {
-    "schemaVersion": {"const": 1, "default": 1},
+    "schemaVersion": {"enum": [1, 2], "default": 1},
     "apiVersion": {"const": 1, "default": 1},
     "id": {"$ref": "#/$defs/identifier"},
     "name": {"type": "string", "minLength": 1, "maxLength": 128},
@@ -16,12 +16,43 @@
     },
     "summary": {"type": "string", "minLength": 1, "maxLength": 2048},
     "publisher": {"type": "string", "minLength": 1, "maxLength": 128},
-    "extensionBundleIdentifier": {"$ref": "#/$defs/identifier"},
-    "permissions": {"type": "array", "uniqueItems": true, "items": {"enum": ["hostInfo", "notifications"]}, "default": []},
+    "runtime": {"enum": ["nativeExtension", "script"], "default": "nativeExtension"},
+    "entryPoint": {
+      "type": "string", "minLength": 1, "maxLength": 1024,
+      "pattern": "^(?!/)(?![\\s\\S]*(?:^|/)\\.{1,2}(?:/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]+/)*[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]*\\.js$",
+      "not": {"pattern": "[\\\\\\u0000-\\u001f\\u007f-\\u009f]"}
+    },
+    "networkDomains": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/networkHost"}, "default": []},
+    "extensionBundleIdentifier": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"const": ""}]},
+    "permissions": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"enum": ["hostInfo", "notifications", "network", "credentials", "openExternal"]}, "default": []},
     "panels": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/panel"}, "default": []},
     "commands": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/command"}, "default": []}
   },
+  "allOf": [
+    {
+      "if": {"properties": {"runtime": {"const": "script"}}, "required": ["runtime"]},
+      "then": {"required": ["schemaVersion", "entryPoint"], "properties": {"schemaVersion": {"const": 2}, "extensionBundleIdentifier": {"const": ""}}},
+      "else": {
+        "required": ["extensionBundleIdentifier"],
+        "properties": {
+          "schemaVersion": {"const": 1}, "runtime": {"const": "nativeExtension"},
+          "extensionBundleIdentifier": {"$ref": "#/$defs/identifier"}, "networkDomains": {"maxItems": 0},
+          "permissions": {"maxItems": 2, "items": {"enum": ["hostInfo", "notifications"]}}
+        },
+        "not": {"required": ["entryPoint"]}
+      }
+    },
+    {
+      "if": {"required": ["networkDomains"], "properties": {"networkDomains": {"minItems": 1}}},
+      "then": {"required": ["permissions"], "properties": {"permissions": {"contains": {"const": "network"}}}}
+    }
+  ],
   "$defs": {
+    "networkHost": {
+      "type": "string", "minLength": 1, "maxLength": 253,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$",
+      "not": {"pattern": "[^a-z0-9.-]"}
+    },
     "identifier": {"type": "string", "maxLength": 255, "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*(?:\\.[A-Za-z0-9][A-Za-z0-9-]*)+$"},
     "panel": {
       "type": "object",

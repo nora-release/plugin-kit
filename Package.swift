@@ -11,7 +11,7 @@ let package = Package(
         .executable(name: "NoraPluginSmokeHost", targets: ["NoraPluginSmokeHost"]),
     ],
     targets: [
-        .target(name: "NoraPluginKit"),
+        .target(name: "NoraPluginKit", resources: [.process("Resources")]),
         // Foundation initializes ExtensionKit before dispatching to the Swift @main entry.
         .executableTarget(name: "NoraPluginExample", dependencies: ["NoraPluginKit"], path: "Examples/NativePlugin",
                           swiftSettings: [.unsafeFlags(["-application-extension"])],

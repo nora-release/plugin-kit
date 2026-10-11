@@ -12,11 +12,28 @@ public enum NoraPluginValidationError: Error, LocalizedError, Equatable, Sendabl
 
 extension NoraPluginManifest {
     public func validate() throws {
-        guard schemaVersion == 1, apiVersion == 1 else {
-            throw NoraPluginValidationError.invalid("version", "only schemaVersion 1 and apiVersion 1 are supported")
+        guard apiVersion == 1,
+              (schemaVersion == 1 && runtime == .nativeExtension) || (schemaVersion == 2 && runtime == .script) else {
+            throw NoraPluginValidationError.invalid("version", "requires native schemaVersion 1 or script schemaVersion 2 with apiVersion 1")
         }
         try Self.identifier(id, field: "id")
-        try Self.identifier(extensionBundleIdentifier, field: "extensionBundleIdentifier")
+        if isScript {
+            guard extensionBundleIdentifier.isEmpty else {
+                throw NoraPluginValidationError.invalid("extensionBundleIdentifier", "script plugins do not contain native extensions")
+            }
+            guard let entryPoint else { throw NoraPluginValidationError.invalid("entryPoint", "is required for script plugins") }
+            try Self.scriptEntryPoint(entryPoint)
+            try Self.networkHosts(networkDomains)
+            guard networkDomains.isEmpty || permissions.contains(.network) else {
+                throw NoraPluginValidationError.invalid("networkDomains", "requires the network permission")
+            }
+        } else {
+            try Self.identifier(extensionBundleIdentifier, field: "extensionBundleIdentifier")
+            guard entryPoint == nil, networkDomains.isEmpty,
+                  permissions.allSatisfy({ [.hostInfo, .notifications].contains($0) }) else {
+                throw NoraPluginValidationError.invalid("runtime", "script capabilities require a script plugin")
+            }
+        }
         try Self.text(name, field: "name", maximum: 128)
         try Self.text(publisher, field: "publisher", maximum: 128)
         try Self.text(summary, field: "summary", maximum: 2048)
@@ -49,6 +66,26 @@ extension NoraPluginManifest {
         }
         guard try JSONEncoder().encode(self).count <= Self.maximumManifestBytes else {
             throw NoraPluginValidationError.invalid("manifest", "exceeds 512 KiB")
+        }
+    }
+
+    private static func scriptEntryPoint(_ value: String) throws {
+        let components = value.split(separator: "/", omittingEmptySubsequences: false)
+        guard !value.isEmpty, value.utf8.count <= 1024, value.hasSuffix(".js"),
+              !value.contains("\\"), !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+              components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            throw NoraPluginValidationError.invalid("entryPoint", "must be a relative JavaScript file path inside the plugin")
+        }
+    }
+
+    private static func networkHosts(_ domains: [String]) throws {
+        guard domains.count <= 64, Set(domains).count == domains.count else {
+            throw NoraPluginValidationError.invalid("networkDomains", "contains duplicates or exceeds 64 hosts")
+        }
+        let pattern = #"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$"#
+        guard domains.allSatisfy({ $0.utf8.count <= 253 && $0.utf8.allSatisfy({ $0 == 45 || $0 == 46 || (48...57).contains($0) || (97...122).contains($0) })
+            && $0.range(of: pattern, options: .regularExpression) != nil }) else {
+            throw NoraPluginValidationError.invalid("networkDomains", "must contain exact lowercase hosts without schemes, ports, or wildcards")
         }
     }
 

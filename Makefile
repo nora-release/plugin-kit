@@ -11,6 +11,8 @@ build:
 test:
 	$(SWIFT) test
 	$(NODE) scripts/plugin-marketplace.test.ts
+	$(NODE) scripts/script-api.test.ts
+	PYTHONDONTWRITEBYTECODE=1 python3 scripts/build-script-plugin.test.py
 
 example:
 	bash scripts/build-example.sh
