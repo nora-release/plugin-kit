@@ -210,7 +210,7 @@ try {
   assert.match(scriptPublishing, /ubuntu-latest/)
   const scriptPackagePath = join(scriptAuthor, 'package.json')
   const scriptPackage = JSON.parse(await readFile(scriptPackagePath, 'utf8'))
-  assert.equal(scriptPackage.devDependencies['@nora/plugin-kit'], 'github:nora-release/plugin-kit#v0.5.0')
+  assert.equal(scriptPackage.devDependencies['@nora/plugin-kit'], 'github:nora-release/plugin-kit#v0.5.1')
   assert.match(scriptPublishing, /npm install --ignore-scripts/)
   assert.match(scriptPublishing, /node_modules\/@nora\/plugin-kit\/scripts\/plugin-marketplace\.mjs/)
   for (const copiedSDKPath of ['scripts/plugin-marketplace.ts', 'scripts/build-script-plugin.py', 'nora.d.ts', 'Package.swift']) {

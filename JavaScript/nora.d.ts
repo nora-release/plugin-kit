@@ -16,6 +16,7 @@ export interface NoraPluginChatDraft {
   /** Optional HTTPS source, without URL credentials, at most 8192 UTF-8 bytes. */
   sourceURL?: string
 }
+export type NoraPluginChatDraftRequest = NoraPluginChatDraft & { actionCapability: string }
 
 export interface NoraPluginView {
   type: NoraPluginViewKind
@@ -45,6 +46,8 @@ export interface NoraPluginPanelEvent {
   value?: string
   locale?: string
   values: Record<string, string>
+  /** Opaque, short-lived authorization supplied only for the current explicit panel action. */
+  actionCapability?: string
 }
 
 export type NoraPluginViewProperties = Omit<NoraPluginView, 'type'>
@@ -58,14 +61,14 @@ export interface NoraPluginAPI {
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI
-  readonly chat: { openDraft(draft: NoraPluginChatDraft): Promise<boolean> }
+  readonly chat: { openDraft(draft: NoraPluginChatDraft, event: NoraPluginPanelEvent): Promise<boolean> }
   request(method: 'network.request', parameters: { url: string; method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
   request(method: 'credentials.get', parameters: { key: string }): Promise<string | null>
   request(method: 'credentials.set', parameters: { key: string; value: string }): Promise<boolean>
   request(method: 'credentials.delete', parameters: { key: string }): Promise<boolean>
   request(method: 'browser.open', parameters: { url: string }): Promise<boolean>
   request(method: 'timers.delay', parameters: { milliseconds: number }): Promise<boolean>
-  request(method: 'chat.openDraft', parameters: NoraPluginChatDraft): Promise<boolean>
+  request(method: 'chat.openDraft', parameters: NoraPluginChatDraftRequest): Promise<boolean>
   request(method: string, parameters?: Record<string, unknown>): Promise<unknown>
 }
 

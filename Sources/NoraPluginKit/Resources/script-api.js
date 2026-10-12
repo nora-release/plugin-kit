@@ -32,7 +32,13 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     locale: String(locale),
     ui: Object.freeze(ui),
     chat: Object.freeze({
-      openDraft: draft => Promise.resolve().then(() => request('chat.openDraft', draft)),
+      openDraft: (draft, event) => Promise.resolve().then(() => {
+        if (!event || typeof event.action !== 'string' || !event.action.trim()
+          || typeof event.actionCapability !== 'string' || !event.actionCapability) {
+          throw new Error('Opening a Nora draft requires an explicit panel action.')
+        }
+        return request('chat.openDraft', { ...draft, actionCapability: event.actionCapability })
+      }),
     }),
     registerPanel: (id, handler) => register(panels, id, handler),
     registerCommand: (id, handler) => register(commands, id, handler),

@@ -48,9 +48,26 @@ for (const action of ['selectItem', 'peekItem', 'closeDetail']) {
 const draft = { title: 'Issue #42', prompt: 'Help me investigate this issue.', context: 'Untrusted issue text\nwith code and metadata.', sourceURL: 'https://github.com/example/repo/issues/42' }
 const requestCount = requests.length
 context.draft = draft
-assert.equal(await runInContext('nora.chat.openDraft(draft)', context), true)
-assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1))), { method: 'chat.openDraft', params: draft })
+context.draftEvent = { action: 'handoff', actionCapability: 'explicit-action-capability', values: {} }
+assert.equal(await runInContext('nora.chat.openDraft(draft, draftEvent)', context), true)
+assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1))), { method: 'chat.openDraft', params: { ...draft, actionCapability: 'explicit-action-capability' } })
 assert.equal(requests.length, requestCount + 1)
+for (const event of [undefined, {}, { action: 'handoff' }, { actionCapability: 'explicit-action-capability' },
+  { action: '', actionCapability: 'explicit-action-capability' }, { action: 'handoff', actionCapability: '' },
+  { action: 'handoff', actionCapability: 42 }]) {
+  context.invalidEvent = event
+  await assert.rejects(() => runInContext('nora.chat.openDraft(draft, invalidEvent)', context), /explicit panel action/)
+}
+assert.equal(requests.length, requestCount + 1, 'Missing action capabilities must not reach host transport')
+runInContext(`nora.registerPanel('com.example.capability', async event => {
+  const denied = await Promise.resolve().then(() => nora.chat.openDraft(draft)).then(() => false, () => true);
+  await nora.chat.openDraft(draft, event);
+  return nora.ui.text(String(denied));
+})`, context)
+const protectedView = await controller.invokePanel('com.example.capability', { action: 'handoff', actionCapability: 'another-action-capability' })
+assert.equal(protectedView.text, 'true', 'An active action must not grant ambient access to a background promise')
+assert.equal(requests.length, requestCount + 2)
+assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1))), { method: 'chat.openDraft', params: { ...draft, actionCapability: 'another-action-capability' } })
 assert.deepEqual(JSON.parse(runInContext('JSON.stringify(Object.keys(nora.chat))', context)), ['openDraft'])
 assert.throws(() => runInContext('nora.chat.send(draft)', context))
 assert.throws(() => runInContext('nora.chat.read()', context))
