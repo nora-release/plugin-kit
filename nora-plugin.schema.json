@@ -16,6 +16,12 @@
     },
     "summary": {"type": "string", "minLength": 1, "maxLength": 2048},
     "publisher": {"type": "string", "minLength": 1, "maxLength": 128},
+    "iconPath": {
+      "type": "string", "minLength": 1, "maxLength": 1024,
+      "description": "Optional brand icon relative to the plugin root, packaged as a regular SVG, PNG, or JPEG resource of at most 512 KiB. Symbolic links are prohibited.",
+      "pattern": "^(?!/)(?![\\s\\S]*(?:^|/)\\.{1,2}(?:/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]+/)*[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]*\\.(?:svg|png|jpg|jpeg)$",
+      "not": {"pattern": "[\\\\\\u0000-\\u001f\\u007f-\\u009f]"}
+    },
     "runtime": {"enum": ["nativeExtension", "script"], "default": "nativeExtension"},
     "entryPoint": {
       "type": "string", "minLength": 1, "maxLength": 1024,

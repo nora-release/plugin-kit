@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import pathlib
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -48,6 +49,35 @@ class ScriptPluginPackagingTests(unittest.TestCase):
     def test_rejects_symlinked_resources(self):
         (self.root / 'resources/secret.txt').symlink_to(self.root / '.env')
         with self.assertRaises(ValueError):
+            BUILDER.package(self.config, self.root / 'dist', 'v0.1.0')
+
+    def icon_manifest(self):
+        manifest_path = self.root / 'nora-plugin.json'
+        manifest = json.loads(manifest_path.read_text())
+        manifest['iconPath'] = 'assets/brand.svg'
+        manifest_path.write_text(json.dumps(manifest))
+        (self.root / 'assets').mkdir()
+        return self.root / 'assets/brand.svg'
+
+    def test_icon_is_packaged_even_without_a_redundant_resources_entry(self):
+        self.icon_manifest().write_text('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h24v24H0z"/></svg>')
+        archive = BUILDER.package(self.config, self.root / 'dist', 'v0.1.0')
+        with zipfile.ZipFile(archive) as content:
+            self.assertIn('com.example.nora.hello/assets/brand.svg', content.namelist())
+
+    def test_rejects_missing_icon(self):
+        self.icon_manifest()
+        with self.assertRaises(ValueError):
+            BUILDER.package(self.config, self.root / 'dist', 'v0.1.0')
+
+    def test_rejects_symlinked_icon(self):
+        self.icon_manifest().symlink_to(self.root / '.env')
+        with self.assertRaises(ValueError):
+            BUILDER.package(self.config, self.root / 'dist', 'v0.1.0')
+
+    def test_rejects_linked_svg_content(self):
+        self.icon_manifest().write_text('<svg><image href="https://example.com/icon.png"/></svg>')
+        with self.assertRaises(subprocess.CalledProcessError):
             BUILDER.package(self.config, self.root / 'dist', 'v0.1.0')
 
     def test_rejects_wrong_version_tag(self):

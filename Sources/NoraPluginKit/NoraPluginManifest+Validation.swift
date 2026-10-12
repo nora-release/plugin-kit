@@ -17,6 +17,12 @@ extension NoraPluginManifest {
             throw NoraPluginValidationError.invalid("version", "requires native schemaVersion 1 or script schemaVersion 2 with apiVersion 1")
         }
         try Self.identifier(id, field: "id")
+        if let iconPath {
+            try Self.relativeResourcePath(iconPath, field: "iconPath")
+            guard ["svg", "png", "jpg", "jpeg"].contains((iconPath as NSString).pathExtension) else {
+                throw NoraPluginValidationError.invalid("iconPath", "must name an SVG, PNG, or JPEG file inside the plugin")
+            }
+        }
         if isScript {
             guard extensionBundleIdentifier.isEmpty else {
                 throw NoraPluginValidationError.invalid("extensionBundleIdentifier", "script plugins do not contain native extensions")
@@ -70,11 +76,18 @@ extension NoraPluginManifest {
     }
 
     private static func scriptEntryPoint(_ value: String) throws {
+        try relativeResourcePath(value, field: "entryPoint")
+        guard value.hasSuffix(".js") else {
+            throw NoraPluginValidationError.invalid("entryPoint", "must be a relative JavaScript file path inside the plugin")
+        }
+    }
+
+    private static func relativeResourcePath(_ value: String, field: String) throws {
         let components = value.split(separator: "/", omittingEmptySubsequences: false)
-        guard !value.isEmpty, value.utf8.count <= 1024, value.hasSuffix(".js"),
+        guard !value.isEmpty, value.utf8.count <= 1024,
               !value.contains("\\"), !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
-            throw NoraPluginValidationError.invalid("entryPoint", "must be a relative JavaScript file path inside the plugin")
+            throw NoraPluginValidationError.invalid(field, "must be a relative resource path inside the plugin")
         }
     }
 

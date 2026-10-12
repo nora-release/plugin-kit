@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { deflateRawSync } from 'node:zlib'
-import { downloadRelease, formatRegistry, manifestFromArchive, validateEntry, validateManifest, validateRegistry, verifyArchive, verifyDownloads } from './plugin-marketplace.ts'
+import { downloadRelease, formatRegistry, manifestFromArchive, maximumIconBytes, validateEntry, validateIconData, validateManifest, validateRegistry, verifyArchive, verifyDownloads } from './plugin-marketplace.ts'
 import type { PluginManifest, RegistryEntry } from './plugin-marketplace.ts'
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
@@ -63,6 +63,24 @@ const { extensionBundleIdentifier: _nativeExtension, ...scriptBase } = manifest
 const scriptManifest: PluginManifest = { ...scriptBase, schemaVersion: 2, runtime: 'script', entryPoint: 'plugin.js',
   networkDomains: ['api.github.com', 'github.com'], permissions: ['network', 'credentials', 'openExternal'] }
 validateManifest(scriptManifest)
+for (const iconPath of ['assets/brand.svg', 'brand.png', 'images/brand.jpg', 'images/brand.jpeg']) {
+  assert.equal(validateManifest({ ...scriptManifest, iconPath }).iconPath, iconPath)
+  assert.equal(validateManifest({ ...manifest, iconPath }).iconPath, iconPath)
+}
+for (const iconPath of ['', '../brand.svg', '/brand.svg', 'a/../brand.svg', 'a/./brand.svg', 'a//brand.svg', 'a\\brand.svg', 'brand.svg\n', 'brand.js', 'brand.SVG', 'a/'.repeat(513) + 'brand.svg', null]) {
+  assert.throws(() => validateManifest({ ...scriptManifest, iconPath }))
+}
+const iconSVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>')
+validateIconData(iconSVG, 'assets/brand.svg')
+for (const icon of [
+  '<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///tmp/private">]><svg>&x;</svg>',
+  '<svg><script>alert(1)</script></svg>', '<svg><image href="https://example.com/image.png"/></svg>',
+  '<svg><use href="#linked"/></svg>', '<svg><foreignObject/></svg>', '<svg><path onclick="run()"/></svg>',
+  '<svg><path style="fill:u&#114;l(https://example.com/x)"/></svg>', '<svg><animate attributeName="href"/></svg>',
+  '<svg><path fill="u&#114;l(https://example.com/x)"/></svg>', '<svg><path></svg>', '<svg>&undefined;</svg>', '<html/>',
+]) assert.throws(() => validateIconData(Buffer.from(icon), 'brand.svg'))
+assert.throws(() => validateIconData(Buffer.alloc(maximumIconBytes + 1), 'brand.png'))
+assert.throws(() => validateIconData(Buffer.from('not PNG'), 'brand.png'))
 for (const entryPoint of ['../plugin.js', '/plugin.js', 'a//plugin.js', 'a\\plugin.js', 'plugin.swift']) {
   assert.throws(() => validateManifest({ ...scriptManifest, entryPoint }))
 }
@@ -82,6 +100,20 @@ const scriptEntry: RegistryEntry = { ...scriptEntryBase, manifest: scriptManifes
 assert.deepEqual(validateEntry(scriptEntry), scriptEntry)
 verifyArchive(scriptEntry, scriptArchive)
 assert.deepEqual(manifestFromArchive(scriptArchive), scriptManifest)
+const iconManifest: PluginManifest = { ...scriptManifest, iconPath: 'assets/brand.svg' }
+const iconFiles = [
+  { name: 'TestPlugin/nora-plugin.json', data: Buffer.from(JSON.stringify(iconManifest)) },
+  { name: 'TestPlugin/plugin.js', data: Buffer.from('code') },
+]
+assert.deepEqual(manifestFromArchive(zip([...iconFiles, { name: 'TestPlugin/assets/brand.svg', data: iconSVG }])), iconManifest)
+for (const icon of [undefined, { data: iconSVG, mode: 0o120777 }, { data: Buffer.alloc(maximumIconBytes + 1) }, { data: Buffer.from('<svg><script/></svg>') }]) {
+  assert.throws(() => manifestFromArchive(zip(icon ? [...iconFiles, { name: 'TestPlugin/assets/brand.svg', ...icon }] : iconFiles)))
+}
+const nativeIconManifest: PluginManifest = { ...manifest, iconPath: 'Contents/Resources/brand.svg' }
+assert.deepEqual(manifestFromArchive(zip([
+  { name: 'Test.app/Contents/Resources/nora-plugin.json', data: Buffer.from(JSON.stringify(nativeIconManifest)) },
+  { name: 'Test.app/Contents/Resources/brand.svg', data: iconSVG },
+])), nativeIconManifest)
 for (const files of [
   [{ name: 'TestPlugin/nora-plugin.json', data: Buffer.from(JSON.stringify(scriptManifest)) }],
   [{ name: 'Test.app/nora-plugin.json', data: Buffer.from(JSON.stringify(scriptManifest)) }, { name: 'Test.app/plugin.js', data: Buffer.from('code') }],
@@ -173,7 +205,7 @@ try {
   assert.match(scriptPublishing, /ubuntu-latest/)
   const scriptPackagePath = join(scriptAuthor, 'package.json')
   const scriptPackage = JSON.parse(await readFile(scriptPackagePath, 'utf8'))
-  assert.equal(scriptPackage.devDependencies['@nora/plugin-kit'], 'github:nora-release/plugin-kit#v0.2.0')
+  assert.equal(scriptPackage.devDependencies['@nora/plugin-kit'], 'github:nora-release/plugin-kit#v0.3.0')
   assert.match(scriptPublishing, /npm install --ignore-scripts/)
   assert.match(scriptPublishing, /node_modules\/@nora\/plugin-kit\/scripts\/plugin-marketplace\.mjs/)
   for (const copiedSDKPath of ['scripts/plugin-marketplace.ts', 'scripts/build-script-plugin.py', 'nora.d.ts', 'Package.swift']) {
@@ -192,6 +224,12 @@ try {
   const installedTool = join(scriptAuthor, 'node_modules/@nora/plugin-kit/scripts/plugin-marketplace.mjs')
   const installedGeneratedAuthor = spawnSync(process.execPath, [installedTool, 'init-author', '--directory', join(temporary, 'installed-author')], { encoding: 'utf8' })
   assert.equal(installedGeneratedAuthor.status, 0, installedGeneratedAuthor.stderr)
+  const authorManifestPath = join(scriptAuthor, 'nora-plugin.json')
+  const authorManifest = JSON.parse(await readFile(authorManifestPath, 'utf8'))
+  authorManifest.iconPath = 'assets/brand.svg'
+  await writeFile(authorManifestPath, JSON.stringify(authorManifest))
+  await mkdir(join(scriptAuthor, 'assets'))
+  await writeFile(join(scriptAuthor, 'assets/brand.svg'), iconSVG)
   const packaged = spawnSync('make', ['package'], { cwd: scriptAuthor, encoding: 'utf8' })
   assert.equal(packaged.status, 0, packaged.stderr)
   result = run('validate-manifest', '--manifest', join(scriptAuthor, 'nora-plugin.json'))
@@ -202,6 +240,7 @@ try {
   assert.equal(result.status, 0, result.stderr)
   const scriptRelease = validateRegistry(JSON.parse(await readFile(join(scriptAuthor, 'dist/marketplace.json'), 'utf8')))
   assert.equal(scriptRelease.plugins[0].manifest.runtime, 'script')
+  assert.equal(scriptRelease.plugins[0].manifest.iconPath, 'assets/brand.svg')
   assert.equal('teamIdentifier' in scriptRelease.plugins[0], false)
   verifyArchive(scriptRelease.plugins[0], await readFile(builtScriptArchive))
   result = run('init-native-author', '--directory', join(temporary, 'author'))

@@ -45,6 +45,12 @@ def package(config_path, destination, tag):
     if not entry.is_file() or entry.stat().st_size > MAXIMUM_SCRIPT_BYTES:
         raise ValueError('The JavaScript entryPoint is missing or exceeds 2 MiB')
     files = {'nora-plugin.json': manifest_path, manifest['entryPoint']: entry}
+    if 'iconPath' in manifest:
+        icon = relative_file(root, manifest['iconPath'])
+        if not icon.is_file():
+            raise ValueError('The plugin iconPath must name a regular file')
+        subprocess.run(['node', str(validator), 'validate-icon', '--icon', str(icon)], check=True)
+        files[manifest['iconPath']] = icon
     resources = config.get('resources', [])
     if not isinstance(resources, list) or len(resources) > 100:
         raise ValueError('resources must list at most 100 relative files or directories')

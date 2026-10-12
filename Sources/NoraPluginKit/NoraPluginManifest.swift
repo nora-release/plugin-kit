@@ -7,6 +7,7 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
     public static let maximumManifestBytes = 512 * 1024
     public static let maximumSchemaBytes = 64 * 1024
     public static let maximumScriptBytes = 2 * 1024 * 1024
+    public static let maximumIconBytes = 512 * 1024
 
     public let schemaVersion: Int
     public let id: String
@@ -22,6 +23,7 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
     public let runtime: NoraPluginRuntimeKind
     public let entryPoint: String?
     public let networkDomains: [String]
+    public let iconPath: String?
     public var isScript: Bool { runtime == .script }
 
     public init(schemaVersion: Int = 1, id: String, name: String, version: String, summary: String,
@@ -29,7 +31,7 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
                 permissions: [NoraPluginPermission] = [], panels: [NoraPluginPanel] = [],
                 commands: [NoraPluginCommand] = [], apiVersion: Int = 1,
                 runtime: NoraPluginRuntimeKind = .nativeExtension, entryPoint: String? = nil,
-                networkDomains: [String] = []) {
+                networkDomains: [String] = [], iconPath: String? = nil) {
         self.schemaVersion = schemaVersion
         self.id = id
         self.name = name
@@ -44,6 +46,7 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
         self.runtime = runtime
         self.entryPoint = entryPoint
         self.networkDomains = networkDomains
+        self.iconPath = iconPath
     }
 
     public init(from decoder: any Decoder) throws {
@@ -62,6 +65,7 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
         runtime = try values.decodeIfPresent(NoraPluginRuntimeKind.self, forKey: .runtime) ?? .nativeExtension
         entryPoint = try values.decodeIfPresent(String.self, forKey: .entryPoint)
         networkDomains = try values.decodeIfPresent([String].self, forKey: .networkDomains) ?? []
+        iconPath = try values.decodeIfPresent(String.self, forKey: .iconPath)
     }
 
     public static func decode(_ data: Data) throws -> Self {

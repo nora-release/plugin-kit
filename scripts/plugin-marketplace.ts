@@ -8,7 +8,7 @@ import { inflateRawSync } from 'node:zlib'
 
 export type PluginManifest = {
   schemaVersion: 1 | 2; apiVersion: 1; id: string; name: string; version: string; summary: string; publisher: string
-  extensionBundleIdentifier?: string; runtime?: 'nativeExtension' | 'script'; entryPoint?: string; networkDomains?: string[]; permissions: string[]
+  extensionBundleIdentifier?: string; runtime?: 'nativeExtension' | 'script'; entryPoint?: string; networkDomains?: string[]; iconPath?: string; permissions: string[]
   panels: { id: string; title: string; systemImage: string }[]
   commands: { id: string; title: string; description: string; inputSchemaJSON: string; readOnly: boolean }[]
 }
@@ -19,6 +19,7 @@ export type RegistryEntry = {
 export type Registry = { schemaVersion: 1; name: string; plugins: RegistryEntry[] }
 const maximumArchiveBytes = 256 * 1024 * 1024
 const maximumManifestBytes = 512 * 1024
+export const maximumIconBytes = 512 * 1024
 const identifier = /^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+$/
 const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
 
@@ -42,16 +43,63 @@ function array(value: unknown, field: string, maximum: number): unknown[] {
   return value
 }
 
+function relativeResourcePath(value: unknown, field: string): asserts value is string {
+  requireValue(typeof value === 'string' && Buffer.byteLength(value) <= 1024 && !/[\\\p{Cc}]/u.test(value)
+    && value.split('/').every(part => part !== '' && part !== '.' && part !== '..'), `${field} must be a relative resource path inside the plugin`)
+}
+
+export function validateIconData(data: Buffer, path: string): void {
+  requireValue(data.length > 0 && data.length <= maximumIconBytes, 'Plugin icon must be a nonempty file of at most 512 KiB')
+  if (path.endsWith('.png')) {
+    requireValue(data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), 'Plugin PNG icon has an invalid signature')
+    return
+  }
+  if (path.endsWith('.jpg') || path.endsWith('.jpeg')) {
+    requireValue(data.length >= 4 && data[0] === 0xff && data[1] === 0xd8 && data[data.length - 2] === 0xff && data[data.length - 1] === 0xd9, 'Plugin JPEG icon has an invalid signature')
+    return
+  }
+  requireValue(path.endsWith('.svg'), 'Plugin icon must be an SVG, PNG, or JPEG file')
+  const svg = new TextDecoder('utf-8', { fatal: true }).decode(data)
+  const markup = svg.replace(/<!--[\s\S]*?-->/g, '').replace(/^\uFEFF?\s*<\?xml\s[^?]*\?>/i, '').trim()
+  requireValue(/^<svg(?:\s|>)/.test(markup) && /(?:<\/svg\s*>|\/>$)/.test(markup)
+    && !/<[!?]|<\/?(?:script|foreignObject|image|use|style)\b/i.test(markup)
+    && !/(?:\bhref|\bstyle|\bon[a-z]+)\s*=|url\s*\(/i.test(markup)
+    && !/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/i.test(markup), 'Plugin SVG icon must be static vector markup without entities, scripts, or linked resources')
+  const allowedElements = new Set(['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'defs', 'title', 'desc', 'clipPath', 'mask', 'linearGradient', 'radialGradient', 'stop'])
+  const decoded = markup.replace(/&#(x[0-9a-f]+|\d+);/gi, (_, value: string) => String.fromCodePoint(value[0].toLowerCase() === 'x' ? Number.parseInt(value.slice(1), 16) : Number(value)))
+  requireValue(!/url\s*\(/i.test(decoded), 'Plugin SVG icon cannot reference linked resources')
+  const stack: string[] = []
+  let end = 0, roots = 0
+  const tags = /<(\/?)([A-Za-z][A-Za-z0-9:.-]*)((?:\s+[A-Za-z_:][A-Za-z0-9_:.-]*\s*=\s*(?:"[^"<]*"|'[^'<]*'))*\s*)(\/?)>/g
+  for (const tag of markup.matchAll(tags)) {
+    const between = markup.slice(end, tag.index)
+    requireValue(!between.includes('<') && (stack.length > 0 || between.trim() === ''), 'Malformed SVG icon XML')
+    const [, closing, name, attributes, selfClosing] = tag
+    requireValue(allowedElements.has(name), 'Plugin SVG icon contains an unsupported vector element')
+    if (closing) {
+      requireValue(!selfClosing && !attributes.trim() && stack.pop() === name, 'Malformed SVG icon XML')
+    } else {
+      if (stack.length === 0) { roots += 1; requireValue(roots === 1 && name === 'svg', 'Plugin icon must contain one SVG root') }
+      if (!selfClosing) stack.push(name)
+    }
+    end = tag.index + tag[0].length
+  }
+  requireValue(roots === 1 && stack.length === 0 && markup.slice(end).trim() === '', 'Malformed SVG icon XML')
+}
+
 export function validateManifest(value: unknown): PluginManifest {
   const manifest = object(value)
   const script = manifest.runtime === 'script'
   requireValue(manifest.apiVersion === 1 && (script ? manifest.schemaVersion === 2 : manifest.schemaVersion === 1 && (manifest.runtime === undefined || manifest.runtime === 'nativeExtension')), 'Requires native schemaVersion 1 or script schemaVersion 2 with apiVersion 1')
   id(manifest.id, 'id')
+  if (manifest.iconPath !== undefined) {
+    relativeResourcePath(manifest.iconPath, 'iconPath')
+    requireValue(/\.(svg|png|jpg|jpeg)$/.test(manifest.iconPath), 'iconPath must name an SVG, PNG, or JPEG file inside the plugin')
+  }
   if (script) {
     requireValue(manifest.extensionBundleIdentifier === undefined || manifest.extensionBundleIdentifier === '', 'Script plugins cannot contain native extensions')
-    requireValue(typeof manifest.entryPoint === 'string' && Buffer.byteLength(manifest.entryPoint) <= 1024
-      && manifest.entryPoint.endsWith('.js') && !/[\\\p{Cc}]/u.test(manifest.entryPoint)
-      && manifest.entryPoint.split('/').every(part => part !== '' && part !== '.' && part !== '..'), 'entryPoint must be a relative JavaScript file path inside the plugin')
+    relativeResourcePath(manifest.entryPoint, 'entryPoint')
+    requireValue(manifest.entryPoint.endsWith('.js'), 'entryPoint must be a relative JavaScript file path inside the plugin')
     const domains = array(manifest.networkDomains ?? [], 'networkDomains', 64)
     requireValue(new Set(domains).size === domains.length && domains.every(domain => typeof domain === 'string' && domain.length <= 253 && !/[^a-z0-9.-]/.test(domain)
       && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/.test(domain)), 'networkDomains must contain unique exact lowercase hosts without schemes, ports, or wildcards')
@@ -158,7 +206,7 @@ export function manifestFromArchive(data: Buffer): PluginManifest {
   const roots = new Set<string>()
   const symlinks = new Set<string>()
   const paths: string[] = []
-  const regularFiles = new Map<string, number>()
+  const regularFiles = new Map<string, { size: number; method: number; start: number; compressed: number; checksum: number }>()
   let manifest: PluginManifest | undefined
   let manifestPath: string | undefined
   for (let index = 0; index < count; index += 1) {
@@ -185,7 +233,7 @@ export function manifestFromArchive(data: Buffer): PluginManifest {
     requireValue(start + compressed <= central && data.subarray(local + 30, local + 30 + nameLength).equals(nameBytes), 'ZIP entry boundaries do not match')
     const mode = data.readUInt32LE(offset + 38) >>> 16, type = mode & 0o170000
     requireValue([0, 0o040000, 0o100000, 0o120000].includes(type), 'Unsupported ZIP file type')
-    if ((type === 0 || type === 0o100000) && !name.endsWith('/')) regularFiles.set(name, size)
+    if ((type === 0 || type === 0o100000) && !name.endsWith('/')) regularFiles.set(name, { size, method, start, compressed, checksum })
     if (type === 0o120000) {
       requireValue(size > 0 && size <= 4096 && !name.endsWith('/'), 'Invalid ZIP symbolic link')
       const compressedData = data.subarray(start, start + compressed)
@@ -212,7 +260,7 @@ export function manifestFromArchive(data: Buffer): PluginManifest {
   if (manifest.runtime === 'script') {
     requireValue(count <= 5000 && totalBytes <= 128 * 1024 * 1024, 'Script plugin exceeds 5000 files or 128 MiB')
     requireValue(!root.endsWith('.app') && !root.endsWith('.appex') && manifestPath === 'nora-plugin.json' && symlinks.size === 0, 'Script ZIP must contain one ordinary plugin folder with a root manifest and no symbolic links')
-    const entrySize = regularFiles.get(`${root}/${manifest.entryPoint}`)
+    const entrySize = regularFiles.get(`${root}/${manifest.entryPoint}`)?.size
     requireValue(entrySize !== undefined && entrySize <= 2 * 1024 * 1024, 'Script ZIP is missing its entryPoint or the JavaScript exceeds 2 MiB')
   } else {
     requireValue(root.endsWith('.app') && manifestPath === 'Contents/Resources/nora-plugin.json', 'Native ZIP must contain one .app and its Nora manifest')
@@ -220,6 +268,14 @@ export function manifestFromArchive(data: Buffer): PluginManifest {
   for (const path of paths) {
     const parts = path.split('/')
     for (let index = 1; index < parts.length; index += 1) requireValue(!symlinks.has(parts.slice(0, index).join('/')), 'ZIP entry passes through a symbolic link')
+  }
+  if (manifest.iconPath !== undefined) {
+    const icon = regularFiles.get(`${root}/${manifest.iconPath}`)
+    requireValue(icon && icon.size > 0 && icon.size <= maximumIconBytes, 'ZIP is missing its iconPath or the icon exceeds 512 KiB')
+    const compressed = data.subarray(icon.start, icon.start + icon.compressed)
+    const contents = icon.method === 0 ? compressed : inflateRawSync(compressed, { maxOutputLength: maximumIconBytes })
+    requireValue(contents.length === icon.size && crc32(contents) === icon.checksum, 'Plugin icon checksum does not match')
+    validateIconData(contents, manifest.iconPath)
   }
   return manifest
 }
@@ -299,6 +355,12 @@ async function main(args: string[]): Promise<void> {
   if (command === 'validate-manifest') {
     validateManifest(await readJSON(required('--manifest'), maximumManifestBytes))
     console.log('Validated plugin manifest')
+    return
+  }
+  if (command === 'validate-icon') {
+    const path = required('--icon')
+    requireValue((await stat(path)).size <= maximumIconBytes, 'Plugin icon exceeds 512 KiB')
+    validateIconData(await readFile(path), path)
     return
   }
   if (command === 'generate' || command === 'validate') {
@@ -385,7 +447,7 @@ async function main(args: string[]): Promise<void> {
     console.log(`Created ${command === 'init-registry' ? 'registry' : 'author release'} files in ${directory}`)
     return
   }
-  throw new Error('Commands: package, generate, validate, validate-manifest, release-entry, init-registry, init-author (script), init-script-author, init-native-author')
+  throw new Error('Commands: package, generate, validate, validate-manifest, validate-icon, release-entry, init-registry, init-author (script), init-script-author, init-native-author')
 }
 
 export function runMarketplaceCLI(args = process.argv.slice(2)): void {
