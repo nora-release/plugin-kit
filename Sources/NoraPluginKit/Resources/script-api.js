@@ -2,11 +2,18 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   if (typeof request !== 'function') throw new Error('Nora host transport is unavailable.')
   const panels = new Map()
   const commands = new Map()
-  const kinds = ['column', 'row', 'text', 'button', 'textField', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress']
+  const kinds = ['column', 'row', 'text', 'button', 'textField', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
+    'workspace', 'sidebar', 'toolbar', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown']
+  const textStyles = ['title', 'headline', 'body', 'caption', 'monospaced']
+  const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted']
+  const appearances = ['plain', 'primary', 'secondary', 'icon']
   const node = (type, properties = {}, children) => {
     if (!kinds.includes(type)) throw new Error('Unsupported Nora view type.')
     if (typeof properties === 'string') properties = { text: properties }
     if (properties === null || typeof properties !== 'object' || Array.isArray(properties)) throw new Error('Nora view properties must be an object.')
+    for (const [key, choices] of [['textStyle', textStyles], ['tone', tones], ['appearance', appearances]]) {
+      if (properties[key] != null && !choices.includes(properties[key])) throw new Error(`Unsupported Nora view ${key}.`)
+    }
     return { ...properties, ...(children === undefined ? {} : { children }), type }
   }
   const ui = Object.fromEntries(kinds.map(type => [type, properties => node(type, properties)]))

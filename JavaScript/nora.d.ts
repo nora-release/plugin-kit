@@ -1,16 +1,29 @@
 export type NoraPluginViewKind = 'column' | 'row' | 'text' | 'button' | 'textField' | 'secureField' | 'picker' | 'list' | 'divider' | 'spacer' | 'badge' | 'progress'
+  | 'workspace' | 'sidebar' | 'toolbar' | 'navigationItem' | 'collection' | 'collectionItem' | 'menu' | 'emptyState' | 'markdown'
+export type NoraPluginTextStyle = 'title' | 'headline' | 'body' | 'caption' | 'monospaced'
+export type NoraPluginTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'muted'
+export type NoraPluginAppearance = 'plain' | 'primary' | 'secondary' | 'icon'
 
 export interface NoraPluginView {
   type: NoraPluginViewKind
   id?: string
   text?: string
   placeholder?: string
+  /** Item actions select a row; collection.action opens it with Space/Enter; workspace.action closes its inspector. */
   action?: string
+  /** sidebar/collection selection is a child id. Native events write values[parent.id] = selectedChild.id. */
   value?: string
   options?: { value: string; text: string }[]
   items?: NoraPluginView[]
+  /** workspace: [optional sidebar, main, optional inspector]; collectionItem: metadata; menu: secondary controls. */
   children?: NoraPluginView[]
   disabled?: boolean
+  subtitle?: string
+  /** An SF Symbol name rendered by the native host. */
+  symbol?: string
+  textStyle?: NoraPluginTextStyle
+  tone?: NoraPluginTone
+  appearance?: NoraPluginAppearance
 }
 
 export interface NoraPluginPanelEvent {
