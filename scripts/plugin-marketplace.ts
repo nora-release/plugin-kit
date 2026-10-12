@@ -110,8 +110,8 @@ export function validateManifest(value: unknown): PluginManifest {
   text(manifest.name, 'name'); text(manifest.publisher, 'publisher'); text(manifest.summary, 'summary', 2048)
   text(manifest.version, 'version')
   requireValue(semver.test(manifest.version), 'version must be a strict semantic version')
-  const permissions = array(manifest.permissions, 'permissions', script ? 5 : 2)
-  const allowedPermissions = script ? ['hostInfo', 'notifications', 'network', 'credentials', 'openExternal'] : ['hostInfo', 'notifications']
+  const allowedPermissions = script ? ['hostInfo', 'notifications', 'network', 'credentials', 'openExternal', 'chat'] : ['hostInfo', 'notifications']
+  const permissions = array(manifest.permissions, 'permissions', allowedPermissions.length)
   requireValue(new Set(permissions).size === permissions.length && permissions.every(value => allowedPermissions.includes(value as string)), 'Unknown or duplicate plugin permission')
   requireValue(!script || !((manifest.networkDomains as unknown[] | undefined)?.length) || permissions.includes('network'), 'networkDomains requires the network permission')
   const contributions = new Set<string>()

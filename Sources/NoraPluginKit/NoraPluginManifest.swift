@@ -89,6 +89,7 @@ public enum NoraPluginPermission: String, Codable, Hashable, Sendable, CaseItera
     case network
     case credentials
     case openExternal
+    case chat
 }
 
 public struct NoraPluginPanel: Codable, Hashable, Sendable, Identifiable {

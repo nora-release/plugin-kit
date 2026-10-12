@@ -63,6 +63,11 @@ const { extensionBundleIdentifier: _nativeExtension, ...scriptBase } = manifest
 const scriptManifest: PluginManifest = { ...scriptBase, schemaVersion: 2, runtime: 'script', entryPoint: 'plugin.js',
   networkDomains: ['api.github.com', 'github.com'], permissions: ['network', 'credentials', 'openExternal'] }
 validateManifest(scriptManifest)
+assert.deepEqual(validateManifest({ ...scriptManifest, permissions: ['chat'], networkDomains: [] }).permissions, ['chat'])
+assert.deepEqual(validateManifest({ ...scriptManifest, permissions: ['hostInfo', 'notifications', 'network', 'credentials', 'openExternal', 'chat'] }).permissions,
+  ['hostInfo', 'notifications', 'network', 'credentials', 'openExternal', 'chat'])
+assert.throws(() => validateManifest({ ...manifest, permissions: ['chat'] }))
+assert.throws(() => validateManifest({ ...scriptManifest, permissions: ['chat', 'chat'], networkDomains: [] }))
 for (const iconPath of ['assets/brand.svg', 'brand.png', 'images/brand.jpg', 'images/brand.jpeg']) {
   assert.equal(validateManifest({ ...scriptManifest, iconPath }).iconPath, iconPath)
   assert.equal(validateManifest({ ...manifest, iconPath }).iconPath, iconPath)
@@ -205,7 +210,7 @@ try {
   assert.match(scriptPublishing, /ubuntu-latest/)
   const scriptPackagePath = join(scriptAuthor, 'package.json')
   const scriptPackage = JSON.parse(await readFile(scriptPackagePath, 'utf8'))
-  assert.equal(scriptPackage.devDependencies['@nora/plugin-kit'], 'github:nora-release/plugin-kit#v0.4.0')
+  assert.equal(scriptPackage.devDependencies['@nora/plugin-kit'], 'github:nora-release/plugin-kit#v0.5.0')
   assert.match(scriptPublishing, /npm install --ignore-scripts/)
   assert.match(scriptPublishing, /node_modules\/@nora\/plugin-kit\/scripts\/plugin-marketplace\.mjs/)
   for (const copiedSDKPath of ['scripts/plugin-marketplace.ts', 'scripts/build-script-plugin.py', 'nora.d.ts', 'Package.swift']) {

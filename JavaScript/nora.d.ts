@@ -3,6 +3,19 @@ export type NoraPluginViewKind = 'column' | 'row' | 'text' | 'button' | 'textFie
 export type NoraPluginTextStyle = 'title' | 'headline' | 'body' | 'caption' | 'monospaced'
 export type NoraPluginTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'muted'
 export type NoraPluginAppearance = 'plain' | 'primary' | 'secondary' | 'icon'
+export type NoraPluginPermission = 'hostInfo' | 'notifications' | 'network' | 'credentials' | 'openExternal' | 'chat'
+
+/** New conversation content for review; Nora does not send it or expose existing chats to the plugin. */
+export interface NoraPluginChatDraft {
+  /** Nonempty plain text, at most 256 UTF-8 bytes. */
+  title: string
+  /** Nonempty text, at most 4 KiB UTF-8. */
+  prompt: string
+  /** Plugin-supplied source material, at most 128 KiB UTF-8. */
+  context: string
+  /** Optional HTTPS source, without URL credentials, at most 8192 UTF-8 bytes. */
+  sourceURL?: string
+}
 
 export interface NoraPluginView {
   type: NoraPluginViewKind
@@ -45,12 +58,14 @@ export interface NoraPluginAPI {
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI
+  readonly chat: { openDraft(draft: NoraPluginChatDraft): Promise<boolean> }
   request(method: 'network.request', parameters: { url: string; method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
   request(method: 'credentials.get', parameters: { key: string }): Promise<string | null>
   request(method: 'credentials.set', parameters: { key: string; value: string }): Promise<boolean>
   request(method: 'credentials.delete', parameters: { key: string }): Promise<boolean>
   request(method: 'browser.open', parameters: { url: string }): Promise<boolean>
   request(method: 'timers.delay', parameters: { milliseconds: number }): Promise<boolean>
+  request(method: 'chat.openDraft', parameters: NoraPluginChatDraft): Promise<boolean>
   request(method: string, parameters?: Record<string, unknown>): Promise<unknown>
 }
 

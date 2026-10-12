@@ -30,7 +30,7 @@
     },
     "networkDomains": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/networkHost"}, "default": []},
     "extensionBundleIdentifier": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"const": ""}]},
-    "permissions": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"enum": ["hostInfo", "notifications", "network", "credentials", "openExternal"]}, "default": []},
+    "permissions": {"type": "array", "maxItems": 6, "uniqueItems": true, "items": {"enum": ["hostInfo", "notifications", "network", "credentials", "openExternal", "chat"]}, "default": []},
     "panels": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/panel"}, "default": []},
     "commands": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/command"}, "default": []}
   },

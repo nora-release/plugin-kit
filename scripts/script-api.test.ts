@@ -7,11 +7,12 @@ const source = (await readFile(fileURLToPath(new URL('../Sources/NoraPluginKit/R
 const requests: unknown[] = []
 const context = createContext({ transport: async (method: string, params: unknown) => {
   requests.push({ method, params })
-  return 'connected'
+  return method === 'chat.openDraft' ? true : 'connected'
 } })
 const controller = runInContext(`(${source})(transport, 'zh-Hans')`, context)
 assert.equal(runInContext('nora.locale', context), 'zh-Hans')
 assert.equal(runInContext('Object.isFrozen(nora) && Object.isFrozen(nora.ui)', context), true)
+assert.equal(runInContext('Object.isFrozen(nora.chat)', context), true)
 assert.equal(runInContext('Object.getOwnPropertyDescriptor(globalThis, "nora").configurable', context), false)
 assert.throws(() => runInContext('nora.registerCommand("", () => null)', context))
 runInContext('nora.registerCommand("com.example.echo", async args => ({text: await nora.request("credentials.get", {key: args.key})}))', context)
@@ -44,4 +45,13 @@ for (const action of ['selectItem', 'peekItem', 'closeDetail']) {
   assert.equal(result.children[0].children[0].text, action)
   assert.equal(result.children[0].children[1].text, 'issue-42')
 }
+const draft = { title: 'Issue #42', prompt: 'Help me investigate this issue.', context: 'Untrusted issue text\nwith code and metadata.', sourceURL: 'https://github.com/example/repo/issues/42' }
+const requestCount = requests.length
+context.draft = draft
+assert.equal(await runInContext('nora.chat.openDraft(draft)', context), true)
+assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1))), { method: 'chat.openDraft', params: draft })
+assert.equal(requests.length, requestCount + 1)
+assert.deepEqual(JSON.parse(runInContext('JSON.stringify(Object.keys(nora.chat))', context)), ['openDraft'])
+assert.throws(() => runInContext('nora.chat.send(draft)', context))
+assert.throws(() => runInContext('nora.chat.read()', context))
 console.log('Script author API registration, transport, native views, and isolation tests passed')

@@ -31,6 +31,9 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   const api = {
     locale: String(locale),
     ui: Object.freeze(ui),
+    chat: Object.freeze({
+      openDraft: draft => Promise.resolve().then(() => request('chat.openDraft', draft)),
+    }),
     registerPanel: (id, handler) => register(panels, id, handler),
     registerCommand: (id, handler) => register(commands, id, handler),
     request: (method, parameters = {}) => Promise.resolve().then(() => request(method, parameters)),
