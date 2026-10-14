@@ -6,6 +6,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public static let maximumDepth = 32
     public static let maximumAvatarBase64Characters = 128 * 1024
     public static let maximumAvatarBytes = 96 * 1024
+    public static let maximumIconSVGBytes = 16 * 1024
 
     public enum Kind: String, Codable, Hashable, Sendable, CaseIterable {
         case column, row, text, button, textField, secureField, picker, list
@@ -73,13 +74,15 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public let appearance: Appearance?
     /// Inline standard Base64 avatar data for native menu, button, or navigation labels.
     public let avatarBase64: String?
+    /// Badge-only static SVG glyph. Native template rendering applies the badge tone; symbol remains a fallback.
+    public let iconSVG: String?
 
     public init(type: Kind, id: String? = nil, text: String? = nil, placeholder: String? = nil,
                 action: String? = nil, value: String? = nil, options: [Option] = [],
                 items: [NoraPluginView] = [], children: [NoraPluginView] = [], disabled: Bool = false,
                 subtitle: String? = nil, symbol: String? = nil, textStyle: TextStyle? = nil,
                 tone: Tone? = nil, appearance: Appearance? = nil, avatarBase64: String? = nil,
-                loadMoreAction: String? = nil, loadMoreToken: String? = nil) {
+                loadMoreAction: String? = nil, loadMoreToken: String? = nil, iconSVG: String? = nil) {
         self.type = type
         self.id = id
         self.text = text
@@ -98,6 +101,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         self.tone = tone
         self.appearance = appearance
         self.avatarBase64 = avatarBase64
+        self.iconSVG = iconSVG
     }
 
     public init(from decoder: any Decoder) throws {
@@ -120,6 +124,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         tone = try values.decodeIfPresent(Tone.self, forKey: .tone)
         appearance = try values.decodeIfPresent(Appearance.self, forKey: .appearance)
         avatarBase64 = try values.decodeIfPresent(String.self, forKey: .avatarBase64)
+        iconSVG = try values.decodeIfPresent(String.self, forKey: .iconSVG)
     }
 
     public static func decode(_ data: Data) throws -> Self {
@@ -169,6 +174,13 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
                   data.count <= Self.maximumAvatarBytes, data.base64EncodedString() == avatarBase64 else {
                 throw NoraPluginValidationError.invalid("view avatar", "must contain bounded standard Base64 data on a native label")
             }
+        }
+        if let iconSVG {
+            let data = Data(iconSVG.utf8)
+            guard type == .badge, !data.isEmpty, data.count <= Self.maximumIconSVGBytes else {
+                throw NoraPluginValidationError.invalid("view icon SVG", "must be nonempty static SVG of at most 16 KiB UTF-8 on a badge")
+            }
+            try NoraPluginIconAsset.validate(data: data, path: "icon.svg")
         }
         if loadMoreAction != nil || loadMoreToken != nil {
             guard type == .sidebar,

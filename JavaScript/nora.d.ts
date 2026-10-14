@@ -44,6 +44,8 @@ export interface NoraPluginView {
   appearance?: NoraPluginAppearance
   /** Inline standard Base64 data for a native menu, button, or navigationItem avatar; at most 128 KiB characters / 96 KiB decoded. No URL or data: prefix. */
   avatarBase64?: string
+  /** Badge-only static SVG glyph, nonempty and at most 16 KiB UTF-8. The native host validates static vector markup and renders it as a template tinted by tone; symbol remains the fallback. No scripts, entities, or linked resources. */
+  iconSVG?: string
 }
 
 export interface NoraPluginPanelEvent {
