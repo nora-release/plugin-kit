@@ -39,6 +39,34 @@ for (const [property, values] of Object.entries({ textStyle: ['title', 'headline
   for (const value of values) assert.equal(runInContext(`nora.ui.button({${property}:${JSON.stringify(value)}})`, context)[property], value)
   assert.throws(() => runInContext(`nora.ui.button({${property}:'arbitrary-css'})`, context))
 }
+const avatarRequestCount = requests.length
+const maximumAvatarBytes = 96 * 1024
+for (const type of ['menu', 'button', 'navigationItem']) {
+  for (const size of [1, 2, 3, maximumAvatarBytes - 2, maximumAvatarBytes - 1, maximumAvatarBytes]) {
+    const avatar = Buffer.alloc(size, 255).toString('base64')
+    context.avatar = avatar
+    context.avatarKind = type
+    const view = runInContext('nora.ui.node(avatarKind, {text:"Account", avatarBase64:avatar})', context)
+    assert.equal(view.avatarBase64, avatar)
+    assert.equal(view.text, 'Account')
+    assert.equal(runInContext(`nora.ui.${type}({avatarBase64:avatar})`, context).avatarBase64, avatar)
+  }
+}
+for (const avatar of ['', ' ', 'data:image/png;base64,AA==', 'https://example.com/avatar.png', 'AA==\n', 'A A==', 'AA\t==', '界',
+  'AA', 'AAA', 'A===', '====', 'AAAA=', 'AA===', 'AA-_', 'AA==AAAA', 'Zh==', 'Zm9=', 42, true, [], {},
+  Buffer.alloc(maximumAvatarBytes + 1).toString('base64'), 'A'.repeat(128 * 1024 + 1)]) {
+  context.invalidAvatar = avatar
+  assert.throws(() => runInContext('nora.ui.menu({avatarBase64:invalidAvatar})', context), /bounded standard Base64/)
+}
+for (const type of ['text', 'column', 'sidebar', 'collectionItem', 'markdown']) {
+  context.avatarKind = type
+  assert.throws(() => runInContext('nora.ui.node(avatarKind, {avatarBase64:"AA=="})', context), /bounded standard Base64/)
+}
+const legacyLabel = runInContext('nora.ui.menu({text:"Account"})', context)
+assert.equal(legacyLabel.avatarBase64, undefined)
+assert.equal(Object.hasOwn(legacyLabel, 'avatarBase64'), false)
+assert.equal(runInContext('nora.ui.menu({text:"Account", avatarBase64:null})', context).avatarBase64, null)
+assert.equal(requests.length, avatarRequestCount, 'Inline avatars never trigger transport or image requests')
 runInContext('nora.registerPanel("com.example.workspace", event => nora.ui.workspace({children:[nora.ui.column({children:[nora.ui.text(event.action),nora.ui.text(event.values.issues)]})]}))', context)
 for (const action of ['selectItem', 'peekItem', 'closeDetail']) {
   const result = await controller.invokePanel('com.example.workspace', { action, values: { issues: 'issue-42' } })

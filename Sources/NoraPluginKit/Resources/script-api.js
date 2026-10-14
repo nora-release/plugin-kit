@@ -7,12 +7,25 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   const textStyles = ['title', 'headline', 'body', 'caption', 'monospaced']
   const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted']
   const appearances = ['plain', 'primary', 'secondary', 'icon']
+  const base64Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  const validAvatar = value => {
+    if (typeof value !== 'string' || !value.length || value.length > 128 * 1024
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) return false
+    const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0
+    if (value.length / 4 * 3 - padding > 96 * 1024) return false
+    if (padding === 2 && (base64Alphabet.indexOf(value[value.length - 3]) & 15) !== 0) return false
+    if (padding === 1 && (base64Alphabet.indexOf(value[value.length - 2]) & 3) !== 0) return false
+    return true
+  }
   const node = (type, properties = {}, children) => {
     if (!kinds.includes(type)) throw new Error('Unsupported Nora view type.')
     if (typeof properties === 'string') properties = { text: properties }
     if (properties === null || typeof properties !== 'object' || Array.isArray(properties)) throw new Error('Nora view properties must be an object.')
     for (const [key, choices] of [['textStyle', textStyles], ['tone', tones], ['appearance', appearances]]) {
       if (properties[key] != null && !choices.includes(properties[key])) throw new Error(`Unsupported Nora view ${key}.`)
+    }
+    if (properties.avatarBase64 != null && (!['menu', 'button', 'navigationItem'].includes(type) || !validAvatar(properties.avatarBase64))) {
+      throw new Error('Nora view avatar must contain bounded standard Base64 data on a native label.')
     }
     return { ...properties, ...(children === undefined ? {} : { children }), type }
   }

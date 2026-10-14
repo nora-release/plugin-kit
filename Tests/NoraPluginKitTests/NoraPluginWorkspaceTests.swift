@@ -46,6 +46,7 @@ struct NoraPluginWorkspaceTests {
         #expect(view.textStyle == nil)
         #expect(view.tone == nil)
         #expect(view.appearance == nil)
+        #expect(view.avatarBase64 == nil)
         #expect(view.children[0].appearance == nil)
         #expect(try NoraPluginView.decode(JSONEncoder().encode(view)) == view)
     }

@@ -38,6 +38,8 @@ export interface NoraPluginView {
   textStyle?: NoraPluginTextStyle
   tone?: NoraPluginTone
   appearance?: NoraPluginAppearance
+  /** Inline standard Base64 data for a native menu, button, or navigationItem avatar; at most 128 KiB characters / 96 KiB decoded. No URL or data: prefix. */
+  avatarBase64?: string
 }
 
 export interface NoraPluginPanelEvent {

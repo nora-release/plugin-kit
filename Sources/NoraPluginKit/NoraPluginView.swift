@@ -4,6 +4,8 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public static let maximumBytes = 512 * 1024
     public static let maximumNodes = 1000
     public static let maximumDepth = 32
+    public static let maximumAvatarBase64Characters = 128 * 1024
+    public static let maximumAvatarBytes = 96 * 1024
 
     public enum Kind: String, Codable, Hashable, Sendable, CaseIterable {
         case column, row, text, button, textField, secureField, picker, list
@@ -62,12 +64,14 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public let textStyle: TextStyle?
     public let tone: Tone?
     public let appearance: Appearance?
+    /// Inline standard Base64 avatar data for native menu, button, or navigation labels.
+    public let avatarBase64: String?
 
     public init(type: Kind, id: String? = nil, text: String? = nil, placeholder: String? = nil,
                 action: String? = nil, value: String? = nil, options: [Option] = [],
                 items: [NoraPluginView] = [], children: [NoraPluginView] = [], disabled: Bool = false,
                 subtitle: String? = nil, symbol: String? = nil, textStyle: TextStyle? = nil,
-                tone: Tone? = nil, appearance: Appearance? = nil) {
+                tone: Tone? = nil, appearance: Appearance? = nil, avatarBase64: String? = nil) {
         self.type = type
         self.id = id
         self.text = text
@@ -83,6 +87,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         self.textStyle = textStyle
         self.tone = tone
         self.appearance = appearance
+        self.avatarBase64 = avatarBase64
     }
 
     public init(from decoder: any Decoder) throws {
@@ -102,6 +107,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         textStyle = try values.decodeIfPresent(TextStyle.self, forKey: .textStyle)
         tone = try values.decodeIfPresent(Tone.self, forKey: .tone)
         appearance = try values.decodeIfPresent(Appearance.self, forKey: .appearance)
+        avatarBase64 = try values.decodeIfPresent(String.self, forKey: .avatarBase64)
     }
 
     public static func decode(_ data: Data) throws -> Self {
@@ -142,6 +148,14 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
             guard !symbol.isEmpty, symbol.utf8.count <= 128,
                   !symbol.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
                 throw NoraPluginValidationError.invalid("view symbol", "must be a bounded SF Symbol name")
+            }
+        }
+        if let avatarBase64 {
+            guard [.menu, .button, .navigationItem].contains(type),
+                  !avatarBase64.isEmpty, avatarBase64.utf8.count <= Self.maximumAvatarBase64Characters,
+                  let data = Data(base64Encoded: avatarBase64), !data.isEmpty,
+                  data.count <= Self.maximumAvatarBytes, data.base64EncodedString() == avatarBase64 else {
+                throw NoraPluginValidationError.invalid("view avatar", "must contain bounded standard Base64 data on a native label")
             }
         }
         if type == .workspace {
