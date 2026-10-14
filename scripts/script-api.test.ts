@@ -24,6 +24,26 @@ runInContext('nora.registerPanel("com.example.panel", event => nora.ui.column({t
 assert.deepEqual(JSON.parse(JSON.stringify(await controller.invokePanel('com.example.panel'))), { type: 'column', children: [{ type: 'text', text: 'zh-Hans' }] })
 assert.equal((await controller.invokePanel('com.example.panel', { values: { message: 'Hello' } })).children[0].text, 'Hello')
 assert.throws(() => runInContext('nora.ui.node("webview", {})', context))
+const editorRequests = requests.length
+const multilineDraft = 'First line\n\n第二行\r\n\t```swift\nlet value = 1\n```\n'
+context.multilineDraft = multilineDraft
+const editor = runInContext('nora.ui.textEditor({id:"draft",text:"Comment",placeholder:"Write a comment",value:multilineDraft,disabled:false})', context)
+assert.deepEqual(JSON.parse(JSON.stringify(editor)), {
+  type: 'textEditor', id: 'draft', text: 'Comment', placeholder: 'Write a comment', value: multilineDraft, disabled: false,
+})
+assert.equal(editor.action, undefined)
+runInContext('nora.registerPanel("com.example.editor", event => nora.ui.textEditor({id:"draft",value:event.values.draft ?? ""}))', context)
+assert.equal((await controller.invokePanel('com.example.editor', { values: { draft: multilineDraft } })).value, multilineDraft)
+for (const value of ['', 'x'.repeat(64 * 1024), '界'.repeat(21_845) + '\n']) {
+  context.editorValue = value
+  assert.equal(runInContext('nora.ui.textEditor({value:editorValue})', context).value, value)
+}
+for (const value of ['x'.repeat(64 * 1024 + 1), '界'.repeat(21_846), 42, true, [], {}, '\ud800']) {
+  context.editorValue = value
+  assert.throws(() => runInContext('nora.ui.textEditor({value:editorValue})', context), /64 KiB UTF-8/)
+}
+assert.equal(runInContext('nora.ui.textEditor({})', context).value, undefined)
+assert.equal(requests.length, editorRequests, 'Editing multiline descriptors never submits an action or contacts the host')
 const workspace = runInContext(`nora.ui.workspace({id:'workspace',action:'closeDetail',children:[
   nora.ui.sidebar({id:'repositories',value:'repo-1',items:[nora.ui.navigationItem({id:'repo-1',text:'Repository',action:'selectRepository',symbol:'folder',tone:'accent'})]}),
   nora.ui.column({children:[nora.ui.toolbar({children:[nora.ui.text({text:'Issues',textStyle:'headline'}),nora.ui.menu({text:'More',children:[nora.ui.button({text:'Refresh',action:'refresh',appearance:'plain'})]})]}),

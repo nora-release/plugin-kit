@@ -7,9 +7,12 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public static let maximumAvatarBase64Characters = 128 * 1024
     public static let maximumAvatarBytes = 96 * 1024
     public static let maximumIconSVGBytes = 16 * 1024
+    public static let maximumTextEditorValueBytes = 64 * 1024
 
     public enum Kind: String, Codable, Hashable, Sendable, CaseIterable {
         case column, row, text, button, textField, secureField, picker, list
+        /// Native multiline input bound through values[id]. Return inserts a newline without invoking action.
+        case textEditor
         case divider, spacer, badge, progress
         /// Children are an optional first sidebar, main content, and optional inspector.
         /// The action closes the inspector; native events clear values[workspace.id].
@@ -156,7 +159,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         guard text?.utf8.count ?? 0 <= 64 * 1024,
               subtitle?.utf8.count ?? 0 <= 4096,
               placeholder?.utf8.count ?? 0 <= 1024, action?.utf8.count ?? 0 <= 256,
-              value?.utf8.count ?? 0 <= 4096, options.count <= 1000,
+              value?.utf8.count ?? 0 <= (type == .textEditor ? Self.maximumTextEditorValueBytes : 4096), options.count <= 1000,
               options.allSatisfy({ $0.value.utf8.count <= 4096 && $0.text.utf8.count <= 4096 }),
               Set(options.map(\.value)).count == options.count else {
             throw NoraPluginValidationError.invalid("view", "contains oversized or duplicate values")

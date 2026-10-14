@@ -1,4 +1,4 @@
-export type NoraPluginViewKind = 'column' | 'row' | 'text' | 'button' | 'textField' | 'secureField' | 'picker' | 'list' | 'divider' | 'spacer' | 'badge' | 'progress'
+export type NoraPluginViewKind = 'column' | 'row' | 'text' | 'button' | 'textField' | 'textEditor' | 'secureField' | 'picker' | 'list' | 'divider' | 'spacer' | 'badge' | 'progress'
   | 'workspace' | 'sidebar' | 'toolbar' | 'navigationItem' | 'collection' | 'collectionItem' | 'menu' | 'emptyState' | 'markdown'
 export type NoraPluginTextStyle = 'title' | 'headline' | 'body' | 'caption' | 'monospaced'
 export type NoraPluginTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'muted'
@@ -23,9 +23,9 @@ export interface NoraPluginView {
   id?: string
   text?: string
   placeholder?: string
-  /** Item actions select a row; collection.action opens it with Space/Enter; workspace.action closes its inspector. */
+  /** Item actions select a row; collection.action opens it with Space/Enter; workspace.action closes its inspector. textEditor never submits on Return; use a separate button action. */
   action?: string
-  /** sidebar/collection selection is a child id. Native events write values[parent.id] = selectedChild.id. */
+  /** sidebar/collection selection is a child id. Native events write values[parent.id] = selectedChild.id. textEditor preserves multiline plain text, at most 64 KiB UTF-8, bound through values[id]; other values are limited to 4 KiB. */
   value?: string
   /** Sidebar-only action invoked when the list reaches its bottom. Pair with loadMoreToken; both strings must be nonempty and at most 256 UTF-8 bytes. Omit both when no more pages remain. */
   loadMoreAction?: string

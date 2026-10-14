@@ -2,7 +2,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   if (typeof request !== 'function') throw new Error('Nora host transport is unavailable.')
   const panels = new Map()
   const commands = new Map()
-  const kinds = ['column', 'row', 'text', 'button', 'textField', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
+  const kinds = ['column', 'row', 'text', 'button', 'textField', 'textEditor', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
     'workspace', 'sidebar', 'toolbar', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown']
   const textStyles = ['title', 'headline', 'body', 'caption', 'monospaced']
   const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted']
@@ -34,6 +34,9 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     if (properties === null || typeof properties !== 'object' || Array.isArray(properties)) throw new Error('Nora view properties must be an object.')
     for (const [key, choices] of [['textStyle', textStyles], ['tone', tones], ['appearance', appearances]]) {
       if (properties[key] != null && !choices.includes(properties[key])) throw new Error(`Unsupported Nora view ${key}.`)
+    }
+    if (type === 'textEditor' && properties.value != null && properties.value !== '' && !validBoundedString(properties.value, 64 * 1024)) {
+      throw new Error('Nora text editor value must be text of at most 64 KiB UTF-8.')
     }
     if (properties.avatarBase64 != null && (!['menu', 'button', 'navigationItem'].includes(type) || !validAvatar(properties.avatarBase64))) {
       throw new Error('Nora view avatar must contain bounded standard Base64 data on a native label.')

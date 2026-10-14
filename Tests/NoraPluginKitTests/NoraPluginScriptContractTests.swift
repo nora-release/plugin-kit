@@ -55,6 +55,35 @@ struct NoraPluginScriptContractTests {
         #expect(throws: NoraPluginValidationError.self) { try view.validate() }
     }
 
+    @Test("Multiline editors preserve draft text and omitted submission actions")
+    func multilineEditor() throws {
+        let text = "First line\n\n第二行\r\n\t```swift\nlet value = 1\n```\n"
+        let editor = NoraPluginView(type: .textEditor, id: "draft", text: "Comment", placeholder: "Write a comment", value: text)
+        let decoded = try NoraPluginView.decode(JSONEncoder().encode(editor))
+        #expect(decoded == editor)
+        #expect(decoded.value == text)
+        #expect(decoded.action == nil)
+        #expect(!decoded.disabled)
+        let empty = try NoraPluginView.decode(Data(#"{"type":"textEditor","id":"draft","value":"","disabled":true}"#.utf8))
+        #expect(empty.value == "")
+        #expect(empty.disabled)
+        #expect(empty.action == nil)
+    }
+
+    @Test("Multiline drafts allow 64 KiB UTF-8 while single-line values retain their limit")
+    func multilineEditorValueLimit() throws {
+        let maximum = String(repeating: "界", count: 21_845) + "\n"
+        #expect(maximum.utf8.count == NoraPluginView.maximumTextEditorValueBytes)
+        try NoraPluginView(type: .textEditor, value: maximum).validate()
+        #expect(throws: NoraPluginValidationError.self) {
+            try NoraPluginView(type: .textEditor, value: maximum + "x").validate()
+        }
+        try NoraPluginView(type: .textField, value: String(repeating: "x", count: 4096)).validate()
+        #expect(throws: NoraPluginValidationError.self) {
+            try NoraPluginView(type: .textField, value: String(repeating: "x", count: 4097)).validate()
+        }
+    }
+
     @Test("UI depth and node limits are enforced")
     func viewLimits() {
         var view = NoraPluginView(type: .text, text: "Deep")
