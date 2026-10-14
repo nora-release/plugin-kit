@@ -14,8 +14,11 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         /// The action closes the inspector; native events clear values[workspace.id].
         case workspace
         /// Items are navigationItem nodes. value selects an item id; selection updates values[sidebar.id].
+        /// loadMoreAction and loadMoreToken opt into native loading when the list reaches its bottom.
         case sidebar
-        case toolbar, navigationItem
+        case toolbar
+        /// The action selects a row. children can provide native metadata, such as a status badge.
+        case navigationItem
         /// Items are collectionItem nodes. value selects an item id; Space/Enter invokes this node's action.
         case collection
         /// The action selects the item by click or arrow key. children provide native metadata views.
@@ -55,6 +58,10 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public let placeholder: String?
     public let action: String?
     public let value: String?
+    /// Sidebar-only action invoked when its list reaches the bottom. Pair with loadMoreToken.
+    public let loadMoreAction: String?
+    /// An opaque pagination revision, at most 256 UTF-8 bytes. Change after loading each page.
+    public let loadMoreToken: String?
     public let options: [Option]
     public let items: [NoraPluginView]
     public let children: [NoraPluginView]
@@ -71,13 +78,16 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
                 action: String? = nil, value: String? = nil, options: [Option] = [],
                 items: [NoraPluginView] = [], children: [NoraPluginView] = [], disabled: Bool = false,
                 subtitle: String? = nil, symbol: String? = nil, textStyle: TextStyle? = nil,
-                tone: Tone? = nil, appearance: Appearance? = nil, avatarBase64: String? = nil) {
+                tone: Tone? = nil, appearance: Appearance? = nil, avatarBase64: String? = nil,
+                loadMoreAction: String? = nil, loadMoreToken: String? = nil) {
         self.type = type
         self.id = id
         self.text = text
         self.placeholder = placeholder
         self.action = action
         self.value = value
+        self.loadMoreAction = loadMoreAction
+        self.loadMoreToken = loadMoreToken
         self.options = options
         self.items = items
         self.children = children
@@ -98,6 +108,8 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         placeholder = try values.decodeIfPresent(String.self, forKey: .placeholder)
         action = try values.decodeIfPresent(String.self, forKey: .action)
         value = try values.decodeIfPresent(String.self, forKey: .value)
+        loadMoreAction = try values.decodeIfPresent(String.self, forKey: .loadMoreAction)
+        loadMoreToken = try values.decodeIfPresent(String.self, forKey: .loadMoreToken)
         options = try values.decodeIfPresent([Option].self, forKey: .options) ?? []
         items = try values.decodeIfPresent([Self].self, forKey: .items) ?? []
         children = try values.decodeIfPresent([Self].self, forKey: .children) ?? []
@@ -156,6 +168,13 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
                   let data = Data(base64Encoded: avatarBase64), !data.isEmpty,
                   data.count <= Self.maximumAvatarBytes, data.base64EncodedString() == avatarBase64 else {
                 throw NoraPluginValidationError.invalid("view avatar", "must contain bounded standard Base64 data on a native label")
+            }
+        }
+        if loadMoreAction != nil || loadMoreToken != nil {
+            guard type == .sidebar,
+                  let loadMoreAction, !loadMoreAction.isEmpty, loadMoreAction.utf8.count <= 256,
+                  let loadMoreToken, !loadMoreToken.isEmpty, loadMoreToken.utf8.count <= 256 else {
+                throw NoraPluginValidationError.invalid("sidebar pagination", "requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar")
             }
         }
         if type == .workspace {

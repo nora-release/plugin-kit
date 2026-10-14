@@ -34,6 +34,42 @@ assert.equal(workspace.children[0].type, 'sidebar')
 assert.equal(workspace.children[1].children[1].items[0].subtitle, '#42')
 assert.equal(workspace.children[1].children[1].action, 'peekItem')
 assert.equal(workspace.children[2].children[0].type, 'markdown')
+const paginationRequests = requests.length
+const paginatedSidebar = runInContext(`nora.ui.sidebar({
+  id:'items',loadMoreAction:'nextPage',loadMoreToken:'issues:all:2',items:[
+    nora.ui.navigationItem({id:'issue-42',text:'Keyboard navigation',children:[nora.ui.badge({text:'Open',tone:'success'})]})
+  ]
+})`, context)
+assert.equal(paginatedSidebar.loadMoreAction, 'nextPage')
+assert.equal(paginatedSidebar.loadMoreToken, 'issues:all:2')
+assert.equal(paginatedSidebar.items[0].children[0].type, 'badge')
+assert.equal(runInContext('nora.ui.sidebar({id:"legacy"})', context).loadMoreAction, undefined)
+assert.equal(runInContext('nora.ui.sidebar({loadMoreAction:null,loadMoreToken:null})', context).loadMoreToken, null)
+for (const value of ['x'.repeat(256), 'é'.repeat(128), '界'.repeat(85) + 'x', '😀'.repeat(64)]) {
+  assert.equal(Buffer.byteLength(value, 'utf8'), 256)
+  context.paginationValue = value
+  const sidebar = runInContext('nora.ui.sidebar({loadMoreAction:paginationValue,loadMoreToken:paginationValue})', context)
+  assert.equal(sidebar.loadMoreToken, value)
+}
+for (const fields of [
+  { loadMoreAction: 'next' }, { loadMoreToken: '2' }, { loadMoreAction: null, loadMoreToken: '2' },
+  { loadMoreAction: 'next', loadMoreToken: null }, { loadMoreAction: '', loadMoreToken: '2' },
+  { loadMoreAction: 'next', loadMoreToken: '' },
+]) {
+  context.paginationFields = fields
+  assert.throws(() => runInContext('nora.ui.sidebar(paginationFields)', context), /sidebar pagination/)
+}
+for (const value of ['', 42, true, [], {}, 'x'.repeat(257), 'é'.repeat(129), '界'.repeat(86), '😀'.repeat(65), '\ud800', '\udfff']) {
+  context.paginationValue = value
+  assert.throws(() => runInContext('nora.ui.sidebar({loadMoreAction:paginationValue,loadMoreToken:"2"})', context), /sidebar pagination/)
+  assert.throws(() => runInContext('nora.ui.sidebar({loadMoreAction:"next",loadMoreToken:paginationValue})', context), /sidebar pagination/)
+}
+const viewKinds = runInContext('Object.keys(nora.ui).filter(kind => kind !== "node" && kind !== "sidebar")', context)
+for (const kind of viewKinds) {
+  context.paginationKind = kind
+  assert.throws(() => runInContext('nora.ui.node(paginationKind, {loadMoreAction:"next",loadMoreToken:"2"})', context), /sidebar pagination/)
+}
+assert.equal(requests.length, paginationRequests, 'Pagination descriptors do not send requests without a native scroll event')
 for (const [property, values] of Object.entries({ textStyle: ['title', 'headline', 'body', 'caption', 'monospaced'],
   tone: ['neutral', 'accent', 'success', 'warning', 'danger', 'muted'], appearance: ['plain', 'primary', 'secondary', 'icon'] })) {
   for (const value of values) assert.equal(runInContext(`nora.ui.button({${property}:${JSON.stringify(value)}})`, context)[property], value)

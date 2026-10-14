@@ -27,9 +27,13 @@ export interface NoraPluginView {
   action?: string
   /** sidebar/collection selection is a child id. Native events write values[parent.id] = selectedChild.id. */
   value?: string
+  /** Sidebar-only action invoked when the list reaches its bottom. Pair with loadMoreToken; both strings must be nonempty and at most 256 UTF-8 bytes. Omit both when no more pages remain. */
+  loadMoreAction?: string
+  /** Sidebar-only opaque pagination revision. Change after each page so the host can request the next page once. */
+  loadMoreToken?: string
   options?: { value: string; text: string }[]
   items?: NoraPluginView[]
-  /** workspace: [optional sidebar, main, optional inspector]; collectionItem: metadata; menu: secondary controls. */
+  /** workspace: [optional sidebar, main, optional inspector]; navigationItem/collectionItem: metadata such as status badges; menu: secondary controls. */
   children?: NoraPluginView[]
   disabled?: boolean
   subtitle?: string

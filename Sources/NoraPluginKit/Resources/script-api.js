@@ -8,6 +8,17 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted']
   const appearances = ['plain', 'primary', 'secondary', 'icon']
   const base64Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  const validPaginationString = value => {
+    if (typeof value !== 'string' || !value.length) return false
+    let bytes = 0
+    for (const character of value) {
+      const codePoint = character.codePointAt(0)
+      if (codePoint >= 0xd800 && codePoint <= 0xdfff) return false
+      bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4
+      if (bytes > 256) return false
+    }
+    return true
+  }
   const validAvatar = value => {
     if (typeof value !== 'string' || !value.length || value.length > 128 * 1024
       || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) return false
@@ -26,6 +37,10 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     }
     if (properties.avatarBase64 != null && (!['menu', 'button', 'navigationItem'].includes(type) || !validAvatar(properties.avatarBase64))) {
       throw new Error('Nora view avatar must contain bounded standard Base64 data on a native label.')
+    }
+    if ((properties.loadMoreAction != null || properties.loadMoreToken != null)
+      && (type !== 'sidebar' || !validPaginationString(properties.loadMoreAction) || !validPaginationString(properties.loadMoreToken))) {
+      throw new Error('Nora sidebar pagination requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar.')
     }
     return { ...properties, ...(children === undefined ? {} : { children }), type }
   }
