@@ -80,6 +80,16 @@ export interface NoraPluginAPI {
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI
+  readonly panels: {
+    /**
+     * Request a fresh render after background data changes, without authorizing a user action.
+     * panelID must already be registered by this SDK instance and contain 1–255 UTF-16 code units,
+     * matching registerPanel; the host also checks ownership. Resolves to the host's refresh
+     * acceptance, not render completion. Invalid identifiers and transport failures reject
+     * asynchronously. Older hosts may reject this optional request.
+     */
+    invalidate(panelID: string): Promise<boolean>
+  }
   readonly chat: { openDraft(draft: NoraPluginChatDraft, event: NoraPluginPanelEvent): Promise<boolean> }
   request(method: 'network.request', parameters: { url: string; method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
   request(method: 'credentials.get', parameters: { key: string }): Promise<string | null>
@@ -87,6 +97,7 @@ export interface NoraPluginAPI {
   request(method: 'credentials.delete', parameters: { key: string }): Promise<boolean>
   request(method: 'browser.open', parameters: { url: string }): Promise<boolean>
   request(method: 'timers.delay', parameters: { milliseconds: number }): Promise<boolean>
+  request(method: 'panels.invalidate', parameters: { panelID: string }): Promise<boolean>
   request(method: 'chat.openDraft', parameters: NoraPluginChatDraftRequest): Promise<boolean>
   request(method: string, parameters?: Record<string, unknown>): Promise<unknown>
 }

@@ -288,4 +288,58 @@ assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1))), { method: 'chat.op
 assert.deepEqual(JSON.parse(runInContext('JSON.stringify(Object.keys(nora.chat))', context)), ['openDraft'])
 assert.throws(() => runInContext('nora.chat.send(draft)', context))
 assert.throws(() => runInContext('nora.chat.read()', context))
+
+const invalidationRequests: { method: string; params: unknown }[] = []
+let invalidationResponse: () => boolean | Promise<boolean> = () => true
+const invalidationContext = createContext({ transport: (method: string, params: unknown) => {
+  invalidationRequests.push({ method, params })
+  return invalidationResponse()
+} })
+const invalidationController = runInContext(`(${source})(transport)`, invalidationContext)
+runInContext('nora.registerPanel("com.example.background", event => nora.ui.text(JSON.stringify(event)))', invalidationContext)
+runInContext('nora.registerCommand("com.example.command", () => null)', invalidationContext)
+assert.equal(runInContext('Object.isFrozen(nora.panels)', invalidationContext), true)
+assert.deepEqual(JSON.parse(runInContext('JSON.stringify(Object.keys(nora.panels))', invalidationContext)), ['invalidate'])
+for (const panelID of [undefined, null, '', 42, true, [], {}, 'com.example.unregistered', 'com.example.command', 'x'.repeat(256)]) {
+  invalidationContext.invalidPanelID = panelID
+  let result: Promise<boolean> | undefined
+  assert.doesNotThrow(() => { result = runInContext('nora.panels.invalidate(invalidPanelID)', invalidationContext) })
+  assert.equal(typeof result?.then, 'function', 'Invalidation validation rejects through its returned promise')
+  await assert.rejects(result!, /registered panel identifier/)
+}
+assert.equal(invalidationRequests.length, 0, 'Unknown panels, command identifiers, and invalid input never reach the host')
+const backgroundRefresh = runInContext('nora.panels.invalidate("com.example.background", {actionCapability:"ignored"})', invalidationContext)
+assert.equal(invalidationRequests.length, 0, 'Host calls are scheduled asynchronously even for synchronous transports')
+assert.equal(await backgroundRefresh, true)
+assert.deepEqual(JSON.parse(JSON.stringify(invalidationRequests)), [{ method: 'panels.invalidate', params: { panelID: 'com.example.background' } }])
+invalidationResponse = () => false
+assert.equal(await runInContext('nora.panels.invalidate("com.example.background")', invalidationContext), false, 'Host refusal is preserved')
+const maximumPanelID = 'x'.repeat(255)
+invalidationContext.maximumPanelID = maximumPanelID
+runInContext('nora.registerPanel(maximumPanelID, () => nora.ui.text("Maximum identifier"))', invalidationContext)
+assert.throws(() => runInContext('nora.registerPanel("x".repeat(256), () => null)', invalidationContext), /Invalid Nora contribution/)
+invalidationResponse = () => true
+assert.equal(await runInContext('nora.panels.invalidate(maximumPanelID)', invalidationContext), true)
+assert.deepEqual(JSON.parse(JSON.stringify(invalidationRequests.at(-1))), { method: 'panels.invalidate', params: { panelID: maximumPanelID } })
+const synchronousFailure = new Error('Synchronous host failure')
+invalidationResponse = () => { throw synchronousFailure }
+let failedRefresh: Promise<boolean> | undefined
+assert.doesNotThrow(() => { failedRefresh = runInContext('nora.panels.invalidate("com.example.background")', invalidationContext) })
+await assert.rejects(failedRefresh!, error => error === synchronousFailure)
+const asynchronousFailure = new Error('Asynchronous host failure')
+invalidationResponse = () => Promise.reject(asynchronousFailure)
+await assert.rejects(runInContext('nora.panels.invalidate("com.example.background")', invalidationContext), error => error === asynchronousFailure)
+let finishRefresh: ((accepted: boolean) => void) | undefined
+invalidationResponse = () => new Promise(resolve => { finishRefresh = resolve })
+let refreshFinished = false
+const pendingRefresh = runInContext('nora.panels.invalidate("com.example.background")', invalidationContext).then((accepted: boolean) => {
+  refreshFinished = true
+  return accepted
+})
+await Promise.resolve()
+assert.equal(refreshFinished, false, 'The invalidation promise waits for the asynchronous host reply')
+finishRefresh!(true)
+assert.equal(await pendingRefresh, true)
+const backgroundEvent = JSON.parse((await invalidationController.invokePanel('com.example.background')).text)
+assert.deepEqual(backgroundEvent, { locale: 'en', values: {} }, 'Background renders do not acquire action identifiers or capabilities')
 console.log('Script author API registration, transport, native views, and isolation tests passed')

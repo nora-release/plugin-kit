@@ -120,8 +120,9 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const ui = Object.fromEntries(kinds.map(type => [type, properties => node(type, properties)]))
   ui.node = node
+  const validContributionID = id => typeof id === 'string' && id.length > 0 && id.length <= 255
   const register = (collection, id, handler) => {
-    if (typeof id !== 'string' || id.length === 0 || id.length > 255 || typeof handler !== 'function') throw new Error('Invalid Nora contribution.')
+    if (!validContributionID(id) || typeof handler !== 'function') throw new Error('Invalid Nora contribution.')
     if (panels.has(id) || commands.has(id)) throw new Error('Duplicate Nora contribution.')
     collection.set(id, handler)
   }
@@ -133,6 +134,14 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   const api = {
     locale: String(locale),
     ui: Object.freeze(ui),
+    panels: Object.freeze({
+      invalidate: panelID => Promise.resolve().then(() => {
+        if (!validContributionID(panelID) || !panels.has(panelID)) {
+          throw new Error('Invalidating a Nora panel requires a registered panel identifier of at most 255 characters.')
+        }
+        return request('panels.invalidate', { panelID })
+      }),
+    }),
     chat: Object.freeze({
       openDraft: (draft, event) => Promise.resolve().then(() => {
         if (!event || typeof event.action !== 'string' || !event.action.trim()
