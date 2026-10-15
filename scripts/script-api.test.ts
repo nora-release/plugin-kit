@@ -54,6 +54,74 @@ assert.equal(workspace.children[0].type, 'sidebar')
 assert.equal(workspace.children[1].children[1].items[0].subtitle, '#42')
 assert.equal(workspace.children[1].children[1].action, 'peekItem')
 assert.equal(workspace.children[2].children[0].type, 'markdown')
+const detailRequests = requests.length
+const detail = runInContext(`nora.ui.detail({id:'detail',children:[
+  nora.ui.toolbar({children:[nora.ui.text('example/repo · PR #42')]}),
+  nora.ui.column({children:[nora.ui.text({text:'Fix keyboard navigation',textStyle:'title'})]}),
+  nora.ui.tabBar({children:[
+    nora.ui.button({id:'discussion',text:'Discussion',action:'showDiscussion',value:'selected',subtitle:'4'}),
+    nora.ui.button({id:'checks',text:'Checks',action:'showChecks',disabled:true,subtitle:'8'})
+  ]}),
+  nora.ui.splitView({text:'Back to checks',action:'back',value:'detail',children:[
+    nora.ui.column({children:[nora.ui.itemRow({id:'build',text:'Build',subtitle:'macOS',symbol:'checkmark.circle',tone:'success',
+      action:'selectCheck',value:'selected',children:[nora.ui.badge({text:'2m 14s'})]})]}),
+    nora.ui.column({children:[nora.ui.itemRow({text:'Install dependencies',symbol:'checkmark',tone:'success',
+      children:[nora.ui.row({children:[nora.ui.text({text:'14s',textStyle:'caption'}),nora.ui.badge({text:'Passed'})]})]})]})
+  ]})
+]})`, context)
+assert.equal(detail.type, 'detail')
+assert.deepEqual(JSON.parse(JSON.stringify(detail.children[2].children[0])), {
+  type: 'button', id: 'discussion', text: 'Discussion', action: 'showDiscussion', value: 'selected', subtitle: '4',
+})
+assert.equal(detail.children[2].children[1].disabled, true)
+assert.equal(detail.children[3].value, 'detail')
+assert.equal(detail.children[3].children[0].children[0].action, 'selectCheck')
+assert.equal(detail.children[3].children[1].children[0].action, undefined, 'Read-only steps do not acquire implicit actions')
+for (const value of [undefined, null, 'list', 'detail']) {
+  context.compactValue = value
+  assert.equal(runInContext('nora.ui.splitView({value:compactValue,children:[nora.ui.column(),nora.ui.column()]})', context).value, value)
+}
+for (const expression of [
+  'nora.ui.detail()',
+  'nora.ui.detail({children:[nora.ui.toolbar(),nora.ui.column(),nora.ui.tabBar({children:[nora.ui.button()]})]})',
+  'nora.ui.detail({children:[nora.ui.column(),nora.ui.toolbar(),nora.ui.tabBar({children:[nora.ui.button()]}),nora.ui.column()]})',
+  'nora.ui.detail({children:[nora.ui.toolbar(),nora.ui.text("Heading"),nora.ui.tabBar({children:[nora.ui.button()]}),nora.ui.column()]})',
+  'nora.ui.detail({children:[nora.ui.toolbar(),nora.ui.column(),nora.ui.row(),nora.ui.column()]})',
+  'nora.ui.tabBar()',
+  'nora.ui.tabBar({children:[nora.ui.text("Discussion")]})',
+  'nora.ui.tabBar({children:[nora.ui.button({value:"arbitrary"})]})',
+  'nora.ui.tabBar({children:[nora.ui.button({value:"selected"}),nora.ui.button({value:"selected"})]})',
+  'nora.ui.splitView()',
+  'nora.ui.splitView({children:[nora.ui.column()]})',
+  'nora.ui.splitView({children:[nora.ui.column(),nora.ui.column(),nora.ui.column()]})',
+  'nora.ui.splitView({value:"arbitrary",children:[nora.ui.column(),nora.ui.column()]})',
+  'nora.ui.itemRow({value:"arbitrary"})',
+]) assert.throws(() => runInContext(expression, context), /Nora (detail|tab bar|split view|item row)/)
+for (const kind of ['detail', 'tabBar', 'splitView', 'itemRow']) {
+  context.detailKind = kind
+  for (const children of [42, true, {}, 'text', [null], [42], [{ type: 'webview' }]]) {
+    context.invalidChildren = children
+    assert.throws(() => runInContext('nora.ui.node(detailKind,{children:invalidChildren})', context), /child arrays/)
+  }
+  assert.throws(() => runInContext('nora.ui.node(detailKind,{items:[nora.ui.text("Dropped")]})', context), /do not accept items/)
+}
+for (const action of ['', ' \n', 42, true, [], {}, '界'.repeat(86), '\ud800']) {
+  context.invalidRowAction = action
+  for (const expression of [
+    'nora.ui.itemRow({action:invalidRowAction})',
+    'nora.ui.splitView({action:invalidRowAction,children:[nora.ui.column(),nora.ui.column()]})',
+    'nora.ui.tabBar({children:[nora.ui.button({action:invalidRowAction})]})',
+  ]) assert.throws(() => runInContext(expression, context), /native row action/)
+}
+assert.equal(runInContext('nora.ui.itemRow({action:"界".repeat(85)+"x"})', context).action.length, 86)
+for (const expression of [
+  'nora.ui.button({action:"post"})', 'nora.ui.textField({id:"hiddenInput"})', 'nora.ui.menu()',
+  'nora.ui.itemRow({action:"nestedRow"})', 'nora.ui.text({text:"Hidden",action:"hiddenAction"})',
+  'nora.ui.row({children:[nora.ui.badge({text:"Hidden",action:"hiddenBadgeAction"})]})',
+  'nora.ui.column({items:[nora.ui.text("Hidden")]})',
+  'nora.ui.text({options:[{value:"hidden",text:"Hidden"}]})',
+]) assert.throws(() => runInContext(`nora.ui.itemRow({children:[${expression}]})`, context), /static metadata/)
+assert.equal(requests.length, detailRequests, 'Native detail, tab, and row descriptors never invoke their actions during construction')
 const paginationRequests = requests.length
 const paginatedSidebar = runInContext(`nora.ui.sidebar({
   id:'items',loadMoreAction:'nextPage',loadMoreToken:'issues:all:2',items:[

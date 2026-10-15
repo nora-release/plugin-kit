@@ -21,6 +21,17 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         /// loadMoreAction and loadMoreToken opt into native loading when the list reaches its bottom.
         case sidebar
         case toolbar
+        /// Children are a toolbar, a column containing the heading and summary, a tabBar, and body content.
+        /// A sole splitView body fills the remaining height; other body content scrolls beneath the fixed heading.
+        case detail
+        /// Children are native tab buttons. A button with value "selected" marks the active tab; subtitle is its count.
+        case tabBar
+        /// Two independently scrolling panes: a 248-point list and flexible detail. At narrow widths value "detail"
+        /// shows the detail pane; other values show the list. action and text provide the optional back button.
+        case splitView
+        /// Compact status row. value "selected" marks selection; action is optional for read-only rows.
+        /// tone colors only symbol; children contain noninteractive trailing metadata.
+        case itemRow
         /// The action selects a row. children can provide native metadata, such as a status badge.
         case navigationItem
         /// Items are collectionItem nodes. value selects an item id; Space/Enter invokes this node's action.
@@ -200,6 +211,56 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
                 throw NoraPluginValidationError.invalid("workspace", "requires an optional first sidebar, main content, and optional inspector")
             }
         }
+        try validateDetailShape()
         for child in children + items { try child.validate(depth: depth + 1, count: &count, identifiers: &identifiers) }
+    }
+
+    private func validateDetailShape() throws {
+        switch type {
+        case .detail:
+            guard items.isEmpty, children.count >= 4,
+                  children[0].type == .toolbar, children[1].type == .column, children[2].type == .tabBar else {
+                throw NoraPluginValidationError.invalid("detail", "requires a toolbar, heading column, tab bar, and body content in that order")
+            }
+        case .tabBar:
+            guard items.isEmpty, !children.isEmpty,
+                  children.allSatisfy({ $0.type == .button && ($0.value == nil || $0.value == "selected") }),
+                  children.filter({ $0.value == "selected" }).count <= 1 else {
+                throw NoraPluginValidationError.invalid("tab bar", "requires button children with at most one selected value")
+            }
+            for child in children { try child.validateOptionalRowAction() }
+        case .splitView:
+            guard items.isEmpty, children.count == 2, value == nil || value == "list" || value == "detail" else {
+                throw NoraPluginValidationError.invalid("split view", "requires two child panes and an optional list or detail value")
+            }
+            try validateOptionalRowAction()
+        case .itemRow:
+            guard items.isEmpty, value == nil || value == "selected", hasOnlyStaticMetadata else {
+                throw NoraPluginValidationError.invalid("item row", "requires static metadata children and an optional selected value")
+            }
+            try validateOptionalRowAction()
+        default:
+            break
+        }
+    }
+
+    private func validateOptionalRowAction() throws {
+        guard let action else { return }
+        guard !action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, action.utf8.count <= 256 else {
+            throw NoraPluginValidationError.invalid("native row action", "must be omitted for read-only content or a nonempty string of at most 256 UTF-8 bytes")
+        }
+    }
+
+    private var hasOnlyStaticMetadata: Bool {
+        var pending = children
+        var count = 0
+        while let node = pending.popLast() {
+            count += 1
+            guard count <= Self.maximumNodes,
+                  [.row, .column, .text, .badge, .progress, .spacer, .divider].contains(node.type),
+                  node.action == nil, node.items.isEmpty, node.options.isEmpty else { return false }
+            pending.append(contentsOf: node.children)
+        }
+        return true
     }
 }

@@ -3,7 +3,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   const panels = new Map()
   const commands = new Map()
   const kinds = ['column', 'row', 'text', 'button', 'textField', 'textEditor', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
-    'workspace', 'sidebar', 'toolbar', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown']
+    'workspace', 'sidebar', 'toolbar', 'detail', 'tabBar', 'splitView', 'itemRow', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown']
   const textStyles = ['title', 'headline', 'body', 'caption', 'monospaced']
   const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted']
   const appearances = ['plain', 'primary', 'secondary', 'icon']
@@ -28,6 +28,59 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     if (padding === 1 && (base64Alphabet.indexOf(value[value.length - 2]) & 3) !== 0) return false
     return true
   }
+  const validateOptionalRowAction = value => {
+    if (value != null && (!validBoundedString(value, 256) || !value.trim())) {
+      throw new Error('Nora native row action must be omitted for read-only content or a nonempty string of at most 256 UTF-8 bytes.')
+    }
+  }
+  const hasOnlyStaticMetadata = children => {
+    const pending = [...children]
+    let count = 0
+    while (pending.length) {
+      const child = pending.pop()
+      count += 1
+      if (!child || typeof child !== 'object' || count > 1000
+        || !['row', 'column', 'text', 'badge', 'progress', 'spacer', 'divider'].includes(child.type)
+        || child.action != null || (child.items != null && (!Array.isArray(child.items) || child.items.length))
+        || (child.options != null && (!Array.isArray(child.options) || child.options.length))) return false
+      if (child.children != null) {
+        if (!Array.isArray(child.children)) return false
+        pending.push(...child.children)
+      }
+    }
+    return true
+  }
+  const validateDetailShape = view => {
+    if (!['detail', 'tabBar', 'splitView', 'itemRow'].includes(view.type)) return
+    const children = view.children ?? []
+    if (!Array.isArray(children) || !children.every(child => child && typeof child === 'object' && !Array.isArray(child) && kinds.includes(child.type))
+      || (view.items != null && (!Array.isArray(view.items) || view.items.length))) {
+      throw new Error('Nora detail views require child arrays and do not accept items.')
+    }
+    if (view.type === 'detail' && (children.length < 4 || children[0]?.type !== 'toolbar'
+      || children[1]?.type !== 'column' || children[2]?.type !== 'tabBar')) {
+      throw new Error('Nora detail requires a toolbar, heading column, tab bar, and body content in that order.')
+    }
+    if (view.type === 'tabBar') {
+      if (!children.length || !children.every(child => child?.type === 'button' && (child.value == null || child.value === 'selected'))
+        || children.filter(child => child.value === 'selected').length > 1) {
+        throw new Error('Nora tab bar requires button children with at most one selected value.')
+      }
+      for (const child of children) validateOptionalRowAction(child.action)
+    }
+    if (view.type === 'splitView') {
+      if (children.length !== 2 || (view.value != null && !['list', 'detail'].includes(view.value))) {
+        throw new Error('Nora split view requires two child panes and an optional list or detail value.')
+      }
+      validateOptionalRowAction(view.action)
+    }
+    if (view.type === 'itemRow') {
+      if ((view.value != null && view.value !== 'selected') || !hasOnlyStaticMetadata(children)) {
+        throw new Error('Nora item row requires static metadata children and an optional selected value.')
+      }
+      validateOptionalRowAction(view.action)
+    }
+  }
   const node = (type, properties = {}, children) => {
     if (!kinds.includes(type)) throw new Error('Unsupported Nora view type.')
     if (typeof properties === 'string') properties = { text: properties }
@@ -48,7 +101,9 @@ export default function createNoraPluginAPI(request, locale = 'en') {
       && (type !== 'sidebar' || !validBoundedString(properties.loadMoreAction, 256) || !validBoundedString(properties.loadMoreToken, 256))) {
       throw new Error('Nora sidebar pagination requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar.')
     }
-    return { ...properties, ...(children === undefined ? {} : { children }), type }
+    const view = { ...properties, ...(children === undefined ? {} : { children }), type }
+    validateDetailShape(view)
+    return view
   }
   const ui = Object.fromEntries(kinds.map(type => [type, properties => node(type, properties)]))
   ui.node = node
