@@ -3,7 +3,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   const panels = new Map()
   const commands = new Map()
   const kinds = ['column', 'row', 'text', 'button', 'textField', 'textEditor', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
-    'workspace', 'sidebar', 'toolbar', 'detail', 'tabBar', 'splitView', 'itemRow', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown']
+    'workspace', 'sidebar', 'toolbar', 'detail', 'tabBar', 'splitView', 'itemRow', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown', 'diff']
   const textStyles = ['title', 'headline', 'body', 'caption', 'monospaced']
   const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted']
   const appearances = ['plain', 'primary', 'secondary', 'icon']
@@ -81,6 +81,18 @@ export default function createNoraPluginAPI(request, locale = 'en') {
       validateOptionalRowAction(view.action)
     }
   }
+  const validateDiffShape = view => {
+    if (view.type !== 'diff') return
+    if (!validBoundedString(view.text, 64 * 1024)
+      || !validBoundedString(view.subtitle, 4096) || !view.subtitle.trim()
+      || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(view.subtitle)
+      || (view.value != null && !['unified', 'split'].includes(view.value))
+      || ['children', 'items', 'options'].some(key => view[key] != null && (!Array.isArray(view[key]) || view[key].length))
+      || ['action', 'placeholder', 'symbol', 'textStyle', 'tone', 'appearance', 'avatarBase64', 'iconSVG',
+        'loadMoreAction', 'loadMoreToken'].some(key => view[key] != null)) {
+      throw new Error('Nora diff requires a nonempty patch of at most 64 KiB UTF-8, a single-line filename hint of at most 4 KiB UTF-8, an optional unified/split layout, and no interactive or styled content.')
+    }
+  }
   const node = (type, properties = {}, children) => {
     if (!kinds.includes(type)) throw new Error('Unsupported Nora view type.')
     if (typeof properties === 'string') properties = { text: properties }
@@ -103,6 +115,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     }
     const view = { ...properties, ...(children === undefined ? {} : { children }), type }
     validateDetailShape(view)
+    validateDiffShape(view)
     return view
   }
   const ui = Object.fromEntries(kinds.map(type => [type, properties => node(type, properties)]))

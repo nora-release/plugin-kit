@@ -43,6 +43,9 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         case emptyState
         /// Native static Markdown text without HTML or automatic remote image requests.
         case markdown
+        /// Native read-only unified patch in text, with a filename hint in subtitle and optional unified/split layout in value.
+        /// The filename is display metadata only and never grants access to local files.
+        case diff
     }
 
     public enum TextStyle: String, Codable, Hashable, Sendable, CaseIterable {
@@ -212,7 +215,23 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
             }
         }
         try validateDetailShape()
+        try validateDiffShape()
         for child in children + items { try child.validate(depth: depth + 1, count: &count, identifiers: &identifiers) }
+    }
+
+    private func validateDiffShape() throws {
+        guard type == .diff else { return }
+        guard let text, !text.isEmpty,
+              let subtitle, !subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !subtitle.unicodeScalars.contains(where: {
+                  [.control, .format, .lineSeparator, .paragraphSeparator].contains($0.properties.generalCategory)
+              }), value == nil || value == "unified" || value == "split",
+              children.isEmpty, items.isEmpty, options.isEmpty,
+              action == nil, placeholder == nil, symbol == nil, textStyle == nil,
+              tone == nil, appearance == nil, avatarBase64 == nil, iconSVG == nil,
+              loadMoreAction == nil, loadMoreToken == nil else {
+            throw NoraPluginValidationError.invalid("diff", "requires a nonempty patch, a single-line filename hint, an optional unified/split layout, and no interactive or styled content")
+        }
     }
 
     private func validateDetailShape() throws {

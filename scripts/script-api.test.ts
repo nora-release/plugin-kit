@@ -44,6 +44,43 @@ for (const value of ['x'.repeat(64 * 1024 + 1), '界'.repeat(21_846), 42, true, 
 }
 assert.equal(runInContext('nora.ui.textEditor({})', context).value, undefined)
 assert.equal(requests.length, editorRequests, 'Editing multiline descriptors never submits an action or contacts the host')
+const diffRequests = requests.length
+const rawPatch = '@@ -1,2 +1,2 @@\n-let value = 1\n+let value = 2\n // Unchanged\n'
+context.rawPatch = rawPatch
+for (const value of [undefined, null, 'unified', 'split']) {
+  context.diffLayout = value
+  const diff = runInContext('nora.ui.diff({id:"selected-file",text:rawPatch,subtitle:"Sources/示例.swift",value:diffLayout,disabled:true})', context)
+  assert.equal(diff.type, 'diff')
+  assert.equal(diff.text, rawPatch)
+  assert.equal(diff.subtitle, 'Sources/示例.swift')
+  assert.equal(diff.value, value)
+  assert.equal(diff.action, undefined)
+}
+for (const properties of [
+  { text: '界'.repeat(21_845) + '\n', subtitle: '界'.repeat(1365) + 'x' },
+  { text: rawPatch, subtitle: '../Sources/main.swift', children: [], items: [], options: [] },
+  { text: rawPatch, subtitle: '/tmp/main.swift' },
+]) {
+  context.diffProperties = properties
+  assert.equal(runInContext('nora.ui.diff(diffProperties)', context).text, properties.text)
+}
+for (const fields of [
+  { text: null }, { text: '' }, { text: 42 }, { text: 'x'.repeat(64 * 1024 + 1) }, { text: '界'.repeat(21_846) }, { text: '\ud800' },
+  { subtitle: null }, { subtitle: '' }, { subtitle: 42 }, { subtitle: 'x'.repeat(4097) }, { subtitle: '界'.repeat(1366) },
+  ...['\n--- /etc/passwd', '\r+++ /etc/passwd', '\u0000', '\u0085', '\u2028', '\u2029', '\u202e', '\t', '\ud800'].map(control => ({ subtitle: `file${control}.swift` })),
+  { subtitle: '  ' }, { value: '' }, { value: 'detail' }, { value: 42 },
+  { action: 'writeFile' }, { action: '' }, { placeholder: 'Edit' }, { symbol: 'folder' },
+  { textStyle: 'body' }, { tone: 'accent' }, { appearance: 'plain' },
+  { children: [{ type: 'button', action: 'writeFile' }] }, { children: {} },
+  { items: [{ type: 'textField', id: 'input' }] }, { items: {} },
+  { options: [{ value: 'edit', text: 'Edit' }] }, { options: {} },
+]) {
+  context.diffProperties = { text: rawPatch, subtitle: 'main.swift', ...fields }
+  assert.throws(() => runInContext('nora.ui.diff(diffProperties)', context), /Nora diff/)
+}
+assert.throws(() => runInContext('nora.ui.diff()', context), /Nora diff/)
+assert.throws(() => runInContext('nora.ui.node("diff",{text:rawPatch,subtitle:"main.swift"},[nora.ui.button({action:"writeFile"})])', context), /Nora diff/)
+assert.equal(requests.length, diffRequests, 'Read-only patches and path-shaped filename hints never contact the host or load local files')
 const workspace = runInContext(`nora.ui.workspace({id:'workspace',action:'closeDetail',children:[
   nora.ui.sidebar({id:'repositories',value:'repo-1',items:[nora.ui.navigationItem({id:'repo-1',text:'Repository',action:'selectRepository',symbol:'folder',tone:'accent'})]}),
   nora.ui.column({children:[nora.ui.toolbar({children:[nora.ui.text({text:'Issues',textStyle:'headline'}),nora.ui.menu({text:'More',children:[nora.ui.button({text:'Refresh',action:'refresh',appearance:'plain'})]})]}),
