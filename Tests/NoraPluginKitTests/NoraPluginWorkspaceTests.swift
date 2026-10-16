@@ -94,6 +94,19 @@ struct NoraPluginWorkspaceTests {
         }
     }
 
+    @Test("Purple is a native tone that round trips without changing descriptor content")
+    func purpleToneRoundTrip() throws {
+        for kind: NoraPluginView.Kind in [.text, .badge, .itemRow] {
+            let view = NoraPluginView(type: kind, text: "Merged", symbol: "arrow.triangle.merge", tone: .purple)
+            let encoded = try JSONEncoder().encode(view)
+            let decoded = try NoraPluginView.decode(encoded)
+            #expect(decoded == view)
+            #expect(decoded.tone?.rawValue == "purple")
+        }
+        let json = Data(#"{"type":"badge","text":"Merged","tone":"purple"}"#.utf8)
+        #expect(try NoraPluginView.decode(json).tone == .purple)
+    }
+
     @Test("Additional text and symbols respect descriptor limits")
     func newPropertyLimits() {
         #expect(throws: NoraPluginValidationError.self) {

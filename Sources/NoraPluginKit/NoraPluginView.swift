@@ -58,7 +58,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     }
 
     public enum Tone: String, Codable, Hashable, Sendable, CaseIterable {
-        case neutral, accent, success, warning, danger, muted
+        case neutral, accent, success, warning, danger, muted, purple
     }
 
     public enum Appearance: String, Codable, Hashable, Sendable, CaseIterable {

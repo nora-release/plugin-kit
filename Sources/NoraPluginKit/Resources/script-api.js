@@ -5,7 +5,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   const kinds = ['column', 'row', 'text', 'button', 'textField', 'textEditor', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
     'workspace', 'sidebar', 'toolbar', 'detail', 'timelineItem', 'tabBar', 'splitView', 'itemRow', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown', 'diff']
   const textStyles = ['title', 'headline', 'body', 'caption', 'monospaced']
-  const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted']
+  const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted', 'purple']
   const appearances = ['plain', 'primary', 'secondary', 'icon']
   const base64Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
   const validBoundedString = (value, maximumBytes) => {
@@ -162,7 +162,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const api = {
     locale: String(locale),
-    features: Object.freeze({ detailAside: true, itemRowIcon: true }),
+    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true }),
     ui: Object.freeze(ui),
     panels: Object.freeze({
       invalidate: panelID => Promise.resolve().then(() => {

@@ -1,7 +1,8 @@
 export type NoraPluginViewKind = 'column' | 'row' | 'text' | 'button' | 'textField' | 'textEditor' | 'secureField' | 'picker' | 'list' | 'divider' | 'spacer' | 'badge' | 'progress'
   | 'workspace' | 'sidebar' | 'toolbar' | 'detail' | 'timelineItem' | 'tabBar' | 'splitView' | 'itemRow' | 'navigationItem' | 'collection' | 'collectionItem' | 'menu' | 'emptyState' | 'markdown' | 'diff'
 export type NoraPluginTextStyle = 'title' | 'headline' | 'body' | 'caption' | 'monospaced'
-export type NoraPluginTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'muted'
+/** Fixed native palette. Gate purple with nora.features?.purpleTone === true on SDK 0.16+; older hosts reject that tone. */
+export type NoraPluginTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'muted' | 'purple'
 export type NoraPluginAppearance = 'plain' | 'primary' | 'secondary' | 'icon'
 export type NoraPluginPermission = 'hostInfo' | 'notifications' | 'network' | 'credentials' | 'openExternal' | 'chat'
 
@@ -93,7 +94,7 @@ export type NoraPluginUI = Record<Exclude<NoraPluginViewKind, 'diff' | 'timeline
 export interface NoraPluginAPI {
   readonly locale: string
   /** Optional layout capabilities supplied by this SDK's matching native host. Older hosts may omit features. */
-  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean }>
+  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean }>
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI
