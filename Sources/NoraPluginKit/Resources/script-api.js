@@ -3,7 +3,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   const panels = new Map()
   const commands = new Map()
   const kinds = ['column', 'row', 'text', 'button', 'textField', 'textEditor', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
-    'workspace', 'sidebar', 'toolbar', 'detail', 'tabBar', 'splitView', 'itemRow', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown', 'diff']
+    'workspace', 'sidebar', 'toolbar', 'detail', 'timelineItem', 'tabBar', 'splitView', 'itemRow', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown', 'diff']
   const textStyles = ['title', 'headline', 'body', 'caption', 'monospaced']
   const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted']
   const appearances = ['plain', 'primary', 'secondary', 'icon']
@@ -51,7 +51,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     return true
   }
   const validateDetailShape = view => {
-    if (!['detail', 'tabBar', 'splitView', 'itemRow'].includes(view.type)) return
+    if (!['detail', 'timelineItem', 'tabBar', 'splitView', 'itemRow'].includes(view.type)) return
     const children = view.children ?? []
     if (!Array.isArray(children) || !children.every(child => child && typeof child === 'object' && !Array.isArray(child) && kinds.includes(child.type))
       || (view.items != null && (!Array.isArray(view.items) || view.items.length))) {
@@ -60,6 +60,12 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     if (view.type === 'detail' && (children.length < 4 || children[0]?.type !== 'toolbar'
       || children[1]?.type !== 'column' || children[2]?.type !== 'tabBar')) {
       throw new Error('Nora detail requires a toolbar, heading column, tab bar, and body content in that order.')
+    }
+    if (view.type === 'timelineItem' && (children.length < 2 || children.length > 3
+      || children[0]?.type !== 'button' || children[1]?.type !== 'row'
+      || (children.length === 3 && children[2]?.type !== 'column')
+      || (view.value != null && !['comment', 'event'].includes(view.value)) || view.action != null)) {
+      throw new Error('Nora timeline item requires an author button, metadata row, optional body column, an optional comment or event value, and no container action or items.')
     }
     if (view.type === 'tabBar') {
       if (!children.length || !children.every(child => child?.type === 'button' && (child.value == null || child.value === 'selected'))

@@ -159,6 +159,59 @@ for (const expression of [
   'nora.ui.text({options:[{value:"hidden",text:"Hidden"}]})',
 ]) assert.throws(() => runInContext(`nora.ui.itemRow({children:[${expression}]})`, context), /static metadata/)
 assert.equal(requests.length, detailRequests, 'Native detail, tab, and row descriptors never invoke their actions during construction')
+const timelineRequests = requests.length
+const timeline = runInContext(`nora.ui.timelineItem({id:'comment',children:[
+  nora.ui.button({id:'author',text:'example[bot]',action:'open-author',avatarBase64:'AA==',appearance:'plain',disabled:true}),
+  nora.ui.row({children:[nora.ui.text({text:'commented today',textStyle:'caption'}),nora.ui.button({text:'More',action:'comment-menu'})]}),
+  nora.ui.column({children:[nora.ui.markdown('A **comment**'),nora.ui.textEditor({id:'reply-draft',value:'A reply\\n\\n第二行'}),nora.ui.button({text:'Reply',action:'reply'})]})
+]})`, context)
+assert.equal(timeline.type, 'timelineItem')
+assert.equal(timeline.id, 'comment')
+assert.equal(timeline.value, undefined, 'An omitted layout mode remains the default comment')
+assert.equal(timeline.action, undefined, 'The timeline container never acquires an action')
+assert.deepEqual(JSON.parse(JSON.stringify(timeline.children[0])), {
+  type: 'button', id: 'author', text: 'example[bot]', action: 'open-author', avatarBase64: 'AA==', appearance: 'plain', disabled: true,
+})
+assert.equal(timeline.children[1].children[1].action, 'comment-menu')
+assert.equal(timeline.children[2].children[1].value, 'A reply\n\n第二行')
+assert.equal(timeline.children[2].children[2].action, 'reply')
+context.timelineChildren = timeline.children.slice(0, 2)
+for (const value of [undefined, null, 'comment', 'event']) {
+  context.timelineMode = value
+  const item = runInContext('nora.ui.timelineItem({value:timelineMode,children:timelineChildren,disabled:true})', context)
+  assert.equal(item.value, value)
+  assert.equal(item.disabled, true)
+  assert.equal(item.children[0], timeline.children[0], 'Timeline layout retains the original identity node for avatar tracking')
+}
+for (const action of [undefined, null, '', 'open-author']) {
+  context.authorAction = action
+  const item = runInContext('nora.ui.timelineItem({children:[nora.ui.button({text:"Git author",action:authorAction,symbol:"person.crop.circle"}),nora.ui.row()]})', context)
+  assert.equal(item.children[0].action, action, 'Author buttons keep the existing optional action rules')
+}
+for (const expression of [
+  'nora.ui.timelineItem()',
+  'nora.ui.timelineItem({children:[]})',
+  'nora.ui.timelineItem({children:[nora.ui.button()]})',
+  'nora.ui.timelineItem({children:[nora.ui.row(),nora.ui.button()]})',
+  'nora.ui.timelineItem({children:[nora.ui.text("Author"),nora.ui.row()]})',
+  'nora.ui.timelineItem({children:[nora.ui.button(),nora.ui.column()]})',
+  'nora.ui.timelineItem({children:[nora.ui.button(),nora.ui.row(),nora.ui.markdown("Body")]})',
+  'nora.ui.timelineItem({children:[nora.ui.button(),nora.ui.row(),nora.ui.column(),nora.ui.column()]})',
+]) assert.throws(() => runInContext(expression, context), /Nora timeline item/)
+for (const properties of [
+  ...['', 'selected', 'Event', 'arbitrary', 42, true, [], {}].map(value => ({ value })),
+  ...['', 'open-author', 'reply', 42, true, [], {}].map(action => ({ action })),
+  { avatarBase64: 'AA==' },
+]) {
+  context.timelineProperties = properties
+  assert.throws(() => runInContext('nora.ui.timelineItem({...timelineProperties,children:timelineChildren})', context), /Nora (timeline item|view avatar)/)
+}
+for (const children of [42, true, {}, 'text', [null], [42], [{ type: 'webview' }]]) {
+  context.invalidChildren = children
+  assert.throws(() => runInContext('nora.ui.timelineItem({children:invalidChildren})', context), /child arrays/)
+}
+assert.throws(() => runInContext('nora.ui.timelineItem({children:timelineChildren,items:[nora.ui.text("Dropped")]})', context), /do not accept items/)
+assert.equal(requests.length, timelineRequests, 'Timeline identity, metadata, and body controls never invoke their actions during construction')
 const paginationRequests = requests.length
 const paginatedSidebar = runInContext(`nora.ui.sidebar({
   id:'items',loadMoreAction:'nextPage',loadMoreToken:'issues:all:2',items:[

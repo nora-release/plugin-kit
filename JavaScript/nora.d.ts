@@ -1,5 +1,5 @@
 export type NoraPluginViewKind = 'column' | 'row' | 'text' | 'button' | 'textField' | 'textEditor' | 'secureField' | 'picker' | 'list' | 'divider' | 'spacer' | 'badge' | 'progress'
-  | 'workspace' | 'sidebar' | 'toolbar' | 'detail' | 'tabBar' | 'splitView' | 'itemRow' | 'navigationItem' | 'collection' | 'collectionItem' | 'menu' | 'emptyState' | 'markdown' | 'diff'
+  | 'workspace' | 'sidebar' | 'toolbar' | 'detail' | 'timelineItem' | 'tabBar' | 'splitView' | 'itemRow' | 'navigationItem' | 'collection' | 'collectionItem' | 'menu' | 'emptyState' | 'markdown' | 'diff'
 export type NoraPluginTextStyle = 'title' | 'headline' | 'body' | 'caption' | 'monospaced'
 export type NoraPluginTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'muted'
 export type NoraPluginAppearance = 'plain' | 'primary' | 'secondary' | 'icon'
@@ -69,8 +69,22 @@ export interface NoraPluginDiffProperties {
   value?: 'unified' | 'split'
   disabled?: boolean
 }
-export type NoraPluginUI = Record<Exclude<NoraPluginViewKind, 'diff'>, (properties?: NoraPluginViewProperties) => NoraPluginView> & {
+/**
+ * Native discussion entry. Children are [author button, metadata row, optional body column].
+ * The host places the existing author button's avatar in a leading gutter and its name in the header;
+ * the author action and disabled state are retained. Metadata and body retain their own controls.
+ * Omitted value means "comment"; "event" uses a compact activity layout. No container action or items.
+ * Older hosts do not expose ui.timelineItem; feature-detect it before returning this kind.
+ */
+export interface NoraPluginTimelineItemProperties {
+  id?: string
+  value?: 'comment' | 'event'
+  disabled?: boolean
+  children: [NoraPluginView, NoraPluginView] | [NoraPluginView, NoraPluginView, NoraPluginView]
+}
+export type NoraPluginUI = Record<Exclude<NoraPluginViewKind, 'diff' | 'timelineItem'>, (properties?: NoraPluginViewProperties) => NoraPluginView> & {
   diff(properties: NoraPluginDiffProperties): NoraPluginView
+  timelineItem(properties: NoraPluginTimelineItemProperties): NoraPluginView
   text(text: string): NoraPluginView
   node(type: NoraPluginViewKind, properties?: NoraPluginViewProperties, children?: NoraPluginView[]): NoraPluginView
 }

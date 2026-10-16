@@ -24,6 +24,9 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         /// Children are a toolbar, a column containing the heading and summary, a tabBar, and body content.
         /// A sole splitView body fills the remaining height; other body content scrolls beneath the fixed heading.
         case detail
+        /// Children are an author button, metadata row, and optional body column. The host places the author's
+        /// existing avatar in a leading gutter and its name beside the metadata. value is "comment" (default) or "event".
+        case timelineItem
         /// Children are native tab buttons. A button with value "selected" marks the active tab; subtitle is its count.
         case tabBar
         /// Two independently scrolling panes: a 248-point list and flexible detail. At narrow widths value "detail"
@@ -240,6 +243,13 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
             guard items.isEmpty, children.count >= 4,
                   children[0].type == .toolbar, children[1].type == .column, children[2].type == .tabBar else {
                 throw NoraPluginValidationError.invalid("detail", "requires a toolbar, heading column, tab bar, and body content in that order")
+            }
+        case .timelineItem:
+            guard items.isEmpty, (2...3).contains(children.count),
+                  children[0].type == .button, children[1].type == .row,
+                  children.count == 2 || children[2].type == .column,
+                  value == nil || value == "comment" || value == "event", action == nil else {
+                throw NoraPluginValidationError.invalid("timeline item", "requires an author button, metadata row, optional body column, an optional comment or event value, and no container action or items")
             }
         case .tabBar:
             guard items.isEmpty, !children.isEmpty,
