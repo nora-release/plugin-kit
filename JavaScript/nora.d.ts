@@ -48,7 +48,7 @@ export interface NoraPluginView {
   appearance?: NoraPluginAppearance
   /** Inline standard Base64 data for a native menu, button, or navigationItem avatar; at most 128 KiB characters / 96 KiB decoded. No URL or data: prefix. */
   avatarBase64?: string
-  /** Static SVG glyph on badge or itemRow, nonempty and at most 16 KiB UTF-8. The native host validates static vector markup and renders it as a template tinted by tone; symbol remains the fallback. No scripts, entities, or linked resources. Gate itemRow SVGs with nora.features?.itemRowIcon === true on SDK 0.15+; older hosts retain the symbol fallback. */
+  /** Static SVG glyph on badge, itemRow, or button, nonempty and at most 16 KiB UTF-8. The native host validates static vector markup and renders it as a template tinted by tone; symbol remains the fallback. No scripts, entities, or linked resources. Gate itemRow SVGs with nora.features?.itemRowIcon === true on SDK 0.15+, and button SVGs with nora.features?.buttonIcon === true on SDK 0.17+; older hosts retain the symbol fallback. */
   iconSVG?: string
 }
 
@@ -94,7 +94,7 @@ export type NoraPluginUI = Record<Exclude<NoraPluginViewKind, 'diff' | 'timeline
 export interface NoraPluginAPI {
   readonly locale: string
   /** Optional layout capabilities supplied by this SDK's matching native host. Older hosts may omit features. */
-  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean }>
+  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean }>
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI
