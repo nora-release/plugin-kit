@@ -35,7 +35,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         /// shows the detail pane; other values show the list. action and text provide the optional back button.
         case splitView
         /// Compact status row. value "selected" marks selection; action is optional for read-only rows.
-        /// tone colors only symbol; children contain noninteractive trailing metadata.
+        /// tone colors only the leading SVG or symbol; children contain noninteractive trailing metadata.
         case itemRow
         /// The action selects a row. children can provide native metadata, such as a status badge.
         case navigationItem
@@ -96,7 +96,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public let appearance: Appearance?
     /// Inline standard Base64 avatar data for native menu, button, or navigation labels.
     public let avatarBase64: String?
-    /// Badge-only static SVG glyph. Native template rendering applies the badge tone; symbol remains a fallback.
+    /// Static SVG glyph for a badge or itemRow. Native template rendering applies tone; symbol remains a fallback.
     public let iconSVG: String?
 
     public init(type: Kind, id: String? = nil, text: String? = nil, placeholder: String? = nil,
@@ -199,8 +199,8 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         }
         if let iconSVG {
             let data = Data(iconSVG.utf8)
-            guard type == .badge, !data.isEmpty, data.count <= Self.maximumIconSVGBytes else {
-                throw NoraPluginValidationError.invalid("view icon SVG", "must be nonempty static SVG of at most 16 KiB UTF-8 on a badge")
+            guard [.badge, .itemRow].contains(type), !data.isEmpty, data.count <= Self.maximumIconSVGBytes else {
+                throw NoraPluginValidationError.invalid("view icon SVG", "must be nonempty static SVG of at most 16 KiB UTF-8 on a badge or itemRow")
             }
             try NoraPluginIconAsset.validate(data: data, path: "icon.svg")
         }

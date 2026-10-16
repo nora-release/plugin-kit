@@ -135,8 +135,8 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     if (properties.avatarBase64 != null && (!['menu', 'button', 'navigationItem'].includes(type) || !validAvatar(properties.avatarBase64))) {
       throw new Error('Nora view avatar must contain bounded standard Base64 data on a native label.')
     }
-    if (properties.iconSVG != null && (type !== 'badge' || !validBoundedString(properties.iconSVG, 16 * 1024))) {
-      throw new Error('Nora view icon SVG must be a nonempty string of at most 16 KiB UTF-8 on a badge.')
+    if (properties.iconSVG != null && (!['badge', 'itemRow'].includes(type) || !validBoundedString(properties.iconSVG, 16 * 1024))) {
+      throw new Error('Nora view icon SVG must be a nonempty string of at most 16 KiB UTF-8 on a badge or itemRow.')
     }
     if ((properties.loadMoreAction != null || properties.loadMoreToken != null)
       && (type !== 'sidebar' || !validBoundedString(properties.loadMoreAction, 256) || !validBoundedString(properties.loadMoreToken, 256))) {
@@ -162,7 +162,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const api = {
     locale: String(locale),
-    features: Object.freeze({ detailAside: true }),
+    features: Object.freeze({ detailAside: true, itemRowIcon: true }),
     ui: Object.freeze(ui),
     panels: Object.freeze({
       invalidate: panelID => Promise.resolve().then(() => {

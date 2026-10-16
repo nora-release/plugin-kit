@@ -13,9 +13,12 @@ const controller = runInContext(`(${source})(transport, 'zh-Hans')`, context)
 assert.equal(runInContext('nora.locale', context), 'zh-Hans')
 assert.equal(runInContext('Object.isFrozen(nora) && Object.isFrozen(nora.ui)', context), true)
 assert.equal(runInContext('nora.features?.detailAside === true && Object.isFrozen(nora.features)', context), true)
+assert.equal(runInContext('nora.features?.itemRowIcon === true', context), true)
 assert.throws(() => runInContext('"use strict"; nora.features.detailAside = false', context))
+assert.throws(() => runInContext('"use strict"; nora.features.itemRowIcon = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features = {}', context))
 assert.equal(runInContext('({}).features?.detailAside === true', context), false, 'Older hosts without features safely select the existing detail layout')
+assert.equal(runInContext('({features:{detailAside:true}}).features?.itemRowIcon === true', context), false, 'SDK 0.14 hosts safely retain the item row symbol fallback')
 assert.equal(runInContext('Object.isFrozen(nora.chat)', context), true)
 assert.equal(runInContext('Object.getOwnPropertyDescriptor(globalThis, "nora").configurable', context), false)
 assert.throws(() => runInContext('nora.registerCommand("", () => null)', context))
@@ -302,19 +305,29 @@ for (const glyph of glyphs) {
   const badge = runInContext('nora.ui.badge({text:"Status",iconSVG:badgeGlyph,symbol:"arrow.triangle.pull",tone:"success"})', context)
   assert.equal(badge.iconSVG, glyph)
   assert.equal(badge.symbol, 'arrow.triangle.pull')
+  const row = runInContext('nora.ui.itemRow({id:"commit",text:"3 commits",iconSVG:badgeGlyph,symbol:"circle",tone:"muted",action:"show-commits",value:"selected",disabled:true,children:[nora.ui.text({text:"8m ago",textStyle:"caption"})]})', context)
+  assert.equal(row.iconSVG, glyph)
+  assert.equal(row.symbol, 'circle')
+  assert.equal(row.tone, 'muted')
+  assert.equal(row.action, 'show-commits')
+  assert.equal(row.children[0].text, '8m ago')
 }
 assert.equal(runInContext('nora.ui.badge({text:"Legacy"})', context).iconSVG, undefined)
 assert.equal(runInContext('nora.ui.badge({iconSVG:null})', context).iconSVG, null)
+assert.equal(runInContext('nora.ui.itemRow({text:"Legacy"})', context).iconSVG, undefined)
+assert.equal(runInContext('nora.ui.itemRow({iconSVG:null})', context).iconSVG, null)
 for (const value of ['x'.repeat(16 * 1024), '界'.repeat(Math.floor(16 * 1024 / 3)) + 'x']) {
   assert.equal(Buffer.byteLength(value, 'utf8'), 16 * 1024)
   context.badgeGlyph = value
   assert.equal(runInContext('nora.ui.badge({iconSVG:badgeGlyph})', context).iconSVG, value)
+  assert.equal(runInContext('nora.ui.itemRow({iconSVG:badgeGlyph})', context).iconSVG, value)
 }
 for (const value of ['', 42, true, [], {}, 'x'.repeat(16 * 1024 + 1), '界'.repeat(Math.floor(16 * 1024 / 3) + 1), '\ud800', '\udfff']) {
   context.badgeGlyph = value
   assert.throws(() => runInContext('nora.ui.badge({iconSVG:badgeGlyph})', context), /icon SVG/)
+  assert.throws(() => runInContext('nora.ui.itemRow({iconSVG:badgeGlyph})', context), /icon SVG/)
 }
-for (const kind of runInContext('Object.keys(nora.ui).filter(kind => kind !== "node" && kind !== "badge")', context)) {
+for (const kind of runInContext('Object.keys(nora.ui).filter(kind => !["node", "badge", "itemRow"].includes(kind))', context)) {
   context.glyphKind = kind
   assert.throws(() => runInContext('nora.ui.node(glyphKind, {iconSVG:"<svg/>"})', context), /icon SVG/)
 }
