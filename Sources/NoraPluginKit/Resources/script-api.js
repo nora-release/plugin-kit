@@ -50,12 +50,35 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     }
     return true
   }
+  const hasOnlyDetailAsideContent = aside => {
+    const pending = [aside]
+    let count = 0
+    while (pending.length) {
+      const child = pending.pop()
+      count += 1
+      if (!child || typeof child !== 'object' || Array.isArray(child) || count > 1000
+        || !['column', 'row', 'text', 'button', 'picker', 'menu', 'divider', 'spacer',
+          'badge', 'progress', 'emptyState', 'markdown', 'itemRow'].includes(child.type)
+        || (child.items != null && (!Array.isArray(child.items) || child.items.length))) return false
+      if (child.children != null) {
+        if (!Array.isArray(child.children)) return false
+        pending.push(...child.children)
+      }
+    }
+    return true
+  }
   const validateDetailShape = view => {
     if (!['detail', 'timelineItem', 'tabBar', 'splitView', 'itemRow'].includes(view.type)) return
     const children = view.children ?? []
-    if (!Array.isArray(children) || !children.every(child => child && typeof child === 'object' && !Array.isArray(child) && kinds.includes(child.type))
-      || (view.items != null && (!Array.isArray(view.items) || view.items.length))) {
-      throw new Error('Nora detail views require child arrays and do not accept items.')
+    if (!Array.isArray(children) || !children.every(child => child && typeof child === 'object' && !Array.isArray(child) && kinds.includes(child.type))) {
+      throw new Error('Nora detail views require child arrays.')
+    }
+    if (view.type !== 'detail' && view.items != null && (!Array.isArray(view.items) || view.items.length)) {
+      throw new Error('Nora detail child layouts do not accept items.')
+    }
+    if (view.type === 'detail' && view.items != null && (!Array.isArray(view.items) || view.items.length > 1
+      || (view.items.length === 1 && (view.items[0]?.type !== 'column' || !hasOnlyDetailAsideContent(view.items[0]))))) {
+      throw new Error('Nora detail aside accepts at most one column of bounded content and controls, without nested layouts, inputs, timeline items, or item arrays.')
     }
     if (view.type === 'detail' && (children.length < 4 || children[0]?.type !== 'toolbar'
       || children[1]?.type !== 'column' || children[2]?.type !== 'tabBar')) {
@@ -139,6 +162,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const api = {
     locale: String(locale),
+    features: Object.freeze({ detailAside: true }),
     ui: Object.freeze(ui),
     panels: Object.freeze({
       invalidate: panelID => Promise.resolve().then(() => {

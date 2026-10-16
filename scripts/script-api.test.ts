@@ -12,6 +12,10 @@ const context = createContext({ transport: async (method: string, params: unknow
 const controller = runInContext(`(${source})(transport, 'zh-Hans')`, context)
 assert.equal(runInContext('nora.locale', context), 'zh-Hans')
 assert.equal(runInContext('Object.isFrozen(nora) && Object.isFrozen(nora.ui)', context), true)
+assert.equal(runInContext('nora.features?.detailAside === true && Object.isFrozen(nora.features)', context), true)
+assert.throws(() => runInContext('"use strict"; nora.features.detailAside = false', context))
+assert.throws(() => runInContext('"use strict"; nora.features = {}', context))
+assert.equal(runInContext('({}).features?.detailAside === true', context), false, 'Older hosts without features safely select the existing detail layout')
 assert.equal(runInContext('Object.isFrozen(nora.chat)', context), true)
 assert.equal(runInContext('Object.getOwnPropertyDescriptor(globalThis, "nora").configurable', context), false)
 assert.throws(() => runInContext('nora.registerCommand("", () => null)', context))
@@ -114,6 +118,45 @@ assert.equal(detail.children[2].children[1].disabled, true)
 assert.equal(detail.children[3].value, 'detail')
 assert.equal(detail.children[3].children[0].children[0].action, 'selectCheck')
 assert.equal(detail.children[3].children[1].children[0].action, undefined, 'Read-only steps do not acquire implicit actions')
+context.detailChildren = detail.children
+const aside = runInContext(`nora.ui.column({id:'summary',children:[
+  nora.ui.text({text:'Reviewers',textStyle:'caption',tone:'muted'}),
+  nora.ui.button({id:'reviewer',text:'Reviewer',avatarBase64:'AA==',action:'open-reviewer',disabled:true}),
+  nora.ui.divider(),
+  nora.ui.itemRow({text:'Build',symbol:'checkmark.circle',tone:'success',action:'show-checks',children:[nora.ui.badge('2m 14s')]}),
+  nora.ui.menu({text:'Merge options',children:[nora.ui.button({text:'Squash',action:'prepare-squash'})]}),
+  nora.ui.picker({id:'strategy',value:'squash',options:[{value:'squash',text:'Squash'}]}),
+  nora.ui.row({children:[nora.ui.spacer(),nora.ui.progress({text:'Loading'})]}),
+  nora.ui.emptyState({text:'No labels'}),nora.ui.markdown('**2** resolved threads')
+]})`, context)
+context.detailAside = aside
+const detailWithAside = runInContext('nora.ui.detail({id:"detail",children:detailChildren,items:[detailAside]})', context)
+assert.equal(detailWithAside.items.length, 1)
+assert.deepEqual(JSON.parse(JSON.stringify(detailWithAside.items[0])), JSON.parse(JSON.stringify(aside)))
+assert.equal(detailWithAside.items[0].children[1].avatarBase64, 'AA==')
+assert.equal(detailWithAside.items[0].children[1].disabled, true)
+assert.equal(detailWithAside.items[0].children[3].action, 'show-checks')
+assert.equal(detailWithAside.items[0].children[4].children[0].action, 'prepare-squash')
+assert.deepEqual(JSON.parse(JSON.stringify(detailWithAside.children)), JSON.parse(JSON.stringify(detail.children)), 'The aside never changes the existing main detail contract')
+assert.equal(runInContext('nora.ui.detail({children:detailChildren,items:[]})', context).items.length, 0)
+assert.equal(runInContext('nora.ui.detail({children:detailChildren,items:[nora.ui.column()]})', context).items[0].type, 'column')
+for (const items of [42, true, {}, 'summary', [null], [42], [{ type: 'row' }], [{ type: 'column' }, { type: 'column' }],
+  [{ type: 'column', children: {} }], [{ type: 'column', children: [null] }],
+  [{ type: 'column', children: [{ type: 'column', items: [{ type: 'text', text: 'Hidden' }] }] }],
+  [{ type: 'column', children: [{ type: 'column', items: {} }] }],
+  [{ type: 'column', children: Array.from({ length: 1000 }, () => ({ type: 'text' })) }]]) {
+  context.invalidAsideItems = items
+  assert.throws(() => runInContext('nora.ui.detail({children:detailChildren,items:invalidAsideItems})', context), /Nora detail aside/)
+}
+for (const type of ['workspace', 'sidebar', 'toolbar', 'detail', 'timelineItem', 'tabBar', 'splitView',
+  'list', 'navigationItem', 'collection', 'collectionItem', 'diff', 'textField', 'secureField', 'textEditor', 'webview']) {
+  context.invalidAsideType = type
+  assert.throws(() => runInContext('nora.ui.detail({children:detailChildren,items:[{type:"column",children:[{type:"row",children:[{type:invalidAsideType}]}]}]})', context), /Nora detail aside/)
+}
+for (const type of ['column', 'row', 'text', 'button', 'picker', 'menu', 'divider', 'spacer', 'badge', 'progress', 'emptyState', 'markdown', 'itemRow']) {
+  context.invalidAsideType = type
+  assert.throws(() => runInContext('nora.ui.detail({children:detailChildren,items:[{type:"column",children:[{type:invalidAsideType,items:[{type:"text",text:"Hidden"}]}]}]})', context), /Nora detail aside/)
+}
 for (const value of [undefined, null, 'list', 'detail']) {
   context.compactValue = value
   assert.equal(runInContext('nora.ui.splitView({value:compactValue,children:[nora.ui.column(),nora.ui.column()]})', context).value, value)
@@ -140,7 +183,7 @@ for (const kind of ['detail', 'tabBar', 'splitView', 'itemRow']) {
     context.invalidChildren = children
     assert.throws(() => runInContext('nora.ui.node(detailKind,{children:invalidChildren})', context), /child arrays/)
   }
-  assert.throws(() => runInContext('nora.ui.node(detailKind,{items:[nora.ui.text("Dropped")]})', context), /do not accept items/)
+  assert.throws(() => runInContext('nora.ui.node(detailKind,{items:[nora.ui.text("Dropped")]})', context), kind === 'detail' ? /detail aside/ : /do not accept items/)
 }
 for (const action of ['', ' \n', 42, true, [], {}, '界'.repeat(86), '\ud800']) {
   context.invalidRowAction = action

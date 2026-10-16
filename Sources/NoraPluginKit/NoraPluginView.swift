@@ -23,6 +23,8 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         case toolbar
         /// Children are a toolbar, a column containing the heading and summary, a tabBar, and body content.
         /// A sole splitView body fills the remaining height; other body content scrolls beneath the fixed heading.
+        /// Items may contain one column for a separate summary aside. It accepts bounded content and controls,
+        /// without nested workspaces, scrolling layouts, input fields, timeline items, or item arrays.
         case detail
         /// Children are an author button, metadata row, and optional body column. The host places the author's
         /// existing avatar in a leading gutter and its name beside the metadata. value is "comment" (default) or "event".
@@ -240,9 +242,12 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     private func validateDetailShape() throws {
         switch type {
         case .detail:
-            guard items.isEmpty, children.count >= 4,
+            guard children.count >= 4,
                   children[0].type == .toolbar, children[1].type == .column, children[2].type == .tabBar else {
                 throw NoraPluginValidationError.invalid("detail", "requires a toolbar, heading column, tab bar, and body content in that order")
+            }
+            guard items.count <= 1, items.first.map({ $0.type == .column && $0.hasOnlyDetailAsideContent }) ?? true else {
+                throw NoraPluginValidationError.invalid("detail aside", "accepts at most one column of bounded content and controls, without nested layouts, inputs, timeline items, or item arrays")
             }
         case .timelineItem:
             guard items.isEmpty, (2...3).contains(children.count),
@@ -288,6 +293,20 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
             guard count <= Self.maximumNodes,
                   [.row, .column, .text, .badge, .progress, .spacer, .divider].contains(node.type),
                   node.action == nil, node.items.isEmpty, node.options.isEmpty else { return false }
+            pending.append(contentsOf: node.children)
+        }
+        return true
+    }
+
+    private var hasOnlyDetailAsideContent: Bool {
+        var pending = [self]
+        var count = 0
+        while let node = pending.popLast() {
+            count += 1
+            guard count <= Self.maximumNodes,
+                  [.column, .row, .text, .button, .picker, .menu, .divider, .spacer,
+                   .badge, .progress, .emptyState, .markdown, .itemRow].contains(node.type),
+                  node.items.isEmpty else { return false }
             pending.append(contentsOf: node.children)
         }
         return true
