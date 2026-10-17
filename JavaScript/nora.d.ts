@@ -34,7 +34,7 @@ export interface NoraPluginView {
   /** Sidebar-only opaque pagination revision. Change after each page so the host can request the next page once. */
   loadMoreToken?: string
   options?: { value: string; text: string }[]
-  /** detail: optional single column for a separate summary aside (SDK 0.14+). Its tree accepts column/row/text/button/picker/menu/divider/spacer/badge/progress/emptyState/markdown/itemRow, and no nested items. The host controls the aside width, scrolling, and compact placement. Existing detail children keep their original order. Other native detail layouts (tabBar/splitView/itemRow/timelineItem) never accept items. */
+  /** detail: optional single column for a separate summary aside (SDK 0.14+). Its tree accepts column/row/text/button/picker/menu/divider/spacer/badge/progress/emptyState/markdown/itemRow, and no nested items. The host controls the aside width, scrolling, and compact placement. Existing detail children keep their original order. tabBar: optional single row of static trailing metadata (SDK 0.18+), accepting row/column/text/badge/progress/spacer/divider, without actions, input controls, nested layouts, items, or options anywhere in its tree. The host controls placement and available width. Gate it with nora.features?.tabBarSummary === true; omit items on older hosts. splitView/itemRow/timelineItem never accept items. */
   items?: NoraPluginView[]
   /** workspace: [optional sidebar, main, optional inspector]; detail: [toolbar, heading/summary column, tabBar, ...body] with a fixed heading and scrolling body. A sole splitView body fills remaining height. tabBar: button children (subtitle may show a count), at most one selected; id/action/disabled remain on each button. splitView: exactly [list, detail], a 248-point list beside flexible detail, independently scrolling. itemRow: static trailing text/badge/progress/spacer/divider, optionally grouped in row/column, without actions or input controls; tone colors only the row's leading SVG or symbol. navigationItem/collectionItem: metadata such as status badges; menu: secondary controls. */
   children?: NoraPluginView[]
@@ -94,7 +94,7 @@ export type NoraPluginUI = Record<Exclude<NoraPluginViewKind, 'diff' | 'timeline
 export interface NoraPluginAPI {
   readonly locale: string
   /** Optional layout capabilities supplied by this SDK's matching native host. Older hosts may omit features. */
-  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean }>
+  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean; tabBarSummary: boolean }>
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI

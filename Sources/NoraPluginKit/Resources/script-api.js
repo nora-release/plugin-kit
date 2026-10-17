@@ -39,7 +39,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     while (pending.length) {
       const child = pending.pop()
       count += 1
-      if (!child || typeof child !== 'object' || count > 1000
+      if (!child || typeof child !== 'object' || Array.isArray(child) || count > 1000
         || !['row', 'column', 'text', 'badge', 'progress', 'spacer', 'divider'].includes(child.type)
         || child.action != null || (child.items != null && (!Array.isArray(child.items) || child.items.length))
         || (child.options != null && (!Array.isArray(child.options) || child.options.length))) return false
@@ -73,7 +73,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     if (!Array.isArray(children) || !children.every(child => child && typeof child === 'object' && !Array.isArray(child) && kinds.includes(child.type))) {
       throw new Error('Nora detail views require child arrays.')
     }
-    if (view.type !== 'detail' && view.items != null && (!Array.isArray(view.items) || view.items.length)) {
+    if (!['detail', 'tabBar'].includes(view.type) && view.items != null && (!Array.isArray(view.items) || view.items.length)) {
       throw new Error('Nora detail child layouts do not accept items.')
     }
     if (view.type === 'detail' && view.items != null && (!Array.isArray(view.items) || view.items.length > 1
@@ -91,6 +91,10 @@ export default function createNoraPluginAPI(request, locale = 'en') {
       throw new Error('Nora timeline item requires an author button, metadata row, optional body column, an optional comment or event value, and no container action or items.')
     }
     if (view.type === 'tabBar') {
+      if (view.items != null && (!Array.isArray(view.items) || view.items.length > 1
+        || (view.items.length === 1 && view.items[0]?.type !== 'row') || !hasOnlyStaticMetadata(view.items))) {
+        throw new Error('Nora tab bar summary accepts at most one row of bounded static metadata, without actions, controls, nested layouts, item arrays, or options.')
+      }
       if (!children.length || !children.every(child => child?.type === 'button' && (child.value == null || child.value === 'selected'))
         || children.filter(child => child.value === 'selected').length > 1) {
         throw new Error('Nora tab bar requires button children with at most one selected value.')
@@ -162,7 +166,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const api = {
     locale: String(locale),
-    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true }),
+    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true }),
     ui: Object.freeze(ui),
     panels: Object.freeze({
       invalidate: panelID => Promise.resolve().then(() => {

@@ -16,16 +16,20 @@ assert.equal(runInContext('nora.features?.detailAside === true && Object.isFroze
 assert.equal(runInContext('nora.features?.itemRowIcon === true', context), true)
 assert.equal(runInContext('nora.features?.purpleTone === true', context), true)
 assert.equal(runInContext('nora.features?.buttonIcon === true', context), true)
+assert.equal(runInContext('nora.features?.tabBarSummary === true', context), true)
 assert.throws(() => runInContext('"use strict"; nora.features.detailAside = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.itemRowIcon = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.purpleTone = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.buttonIcon = false', context))
+assert.throws(() => runInContext('"use strict"; nora.features.tabBarSummary = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features = {}', context))
 assert.equal(runInContext('({}).features?.detailAside === true', context), false, 'Older hosts without features safely select the existing detail layout')
 assert.equal(runInContext('({features:{detailAside:true}}).features?.itemRowIcon === true', context), false, 'SDK 0.14 hosts safely retain the item row symbol fallback')
 assert.equal(runInContext('({features:{detailAside:true,itemRowIcon:true}}).features?.purpleTone === true', context), false, 'SDK 0.15 hosts safely retain their existing tone fallback')
 assert.equal(runInContext('({}).features?.buttonIcon === true', context), false, 'Older hosts without features safely retain the button symbol fallback')
 assert.equal(runInContext('({features:{detailAside:true,itemRowIcon:true,purpleTone:true}}).features?.buttonIcon === true', context), false, 'SDK 0.16 hosts safely retain the button symbol fallback')
+assert.equal(runInContext('({}).features?.tabBarSummary === true', context), false, 'Older hosts without features safely omit tab bar summary items')
+assert.equal(runInContext('({features:{detailAside:true,itemRowIcon:true,purpleTone:true,buttonIcon:true}}).features?.tabBarSummary === true', context), false, 'SDK 0.17 hosts safely retain the existing tab bar shape')
 for (const kind of ['text', 'badge', 'itemRow']) {
   context.purpleKind = kind
   const view = runInContext('nora.ui.node(purpleKind,{text:"Merged",tone:"purple"})', context)
@@ -156,6 +160,45 @@ assert.equal(detailWithAside.items[0].children[4].children[0].action, 'prepare-s
 assert.deepEqual(JSON.parse(JSON.stringify(detailWithAside.children)), JSON.parse(JSON.stringify(detail.children)), 'The aside never changes the existing main detail contract')
 assert.equal(runInContext('nora.ui.detail({children:detailChildren,items:[]})', context).items.length, 0)
 assert.equal(runInContext('nora.ui.detail({children:detailChildren,items:[nora.ui.column()]})', context).items[0].type, 'column')
+context.tabChildren = detail.children[2].children
+const tabSummary = runInContext(`nora.ui.row({id:'change-summary',children:[
+  nora.ui.text({text:'45 files',textStyle:'caption'}),
+  nora.ui.column({children:[nora.ui.row({children:[nora.ui.badge({text:'+3363',tone:'success'})]}),nora.ui.text({text:'−1373',tone:'danger'})]}),
+  nora.ui.spacer(),nora.ui.divider(),nora.ui.progress({text:'Loading'})
+]})`, context)
+context.tabSummary = tabSummary
+const tabsWithSummary = runInContext('nora.ui.tabBar({id:"tabs",children:tabChildren,items:[tabSummary]})', context)
+assert.equal(tabsWithSummary.items[0], tabSummary, 'The host receives the original static summary row')
+assert.equal(tabsWithSummary.children, detail.children[2].children, 'Summary metadata never changes tab identities, actions, selection, or disabled state')
+assert.equal(runInContext('nora.ui.tabBar({children:tabChildren})', context).items, undefined)
+assert.equal(runInContext('nora.ui.tabBar({children:tabChildren,items:[]})', context).items.length, 0)
+assert.equal(runInContext('nora.ui.tabBar({children:tabChildren,items:[nora.ui.row()]})', context).items[0].type, 'row')
+for (const items of [42, true, {}, 'summary', [null], [42], [{type:'text'}], [{type:'column'}],
+  [{type:'row'}, {type:'row'}], [{type:'row',action:'hidden-action'}],
+  [{type:'row',items:[{type:'text',text:'Hidden'}]}], [{type:'row',options:[{value:'hidden',text:'Hidden'}]}],
+  [{type:'row',children:{}}], [{type:'row',children:[null]}],
+  [{type:'row',children:Array.from({length:1000}, () => ({type:'text'}))}]]) {
+  context.invalidSummaryItems = items
+  assert.throws(() => runInContext('nora.ui.tabBar({children:tabChildren,items:invalidSummaryItems})', context), /tab bar summary/)
+}
+for (const type of ['workspace', 'sidebar', 'toolbar', 'detail', 'timelineItem', 'tabBar', 'splitView',
+  'list', 'navigationItem', 'collection', 'collectionItem', 'itemRow', 'diff', 'markdown', 'emptyState',
+  'button', 'menu', 'picker', 'textField', 'secureField', 'textEditor', 'webview']) {
+  context.invalidSummaryType = type
+  assert.throws(() => runInContext('nora.ui.tabBar({children:tabChildren,items:[{type:"row",children:[{type:"column",children:[{type:invalidSummaryType}]}]}]})', context), /tab bar summary/)
+}
+for (const type of ['row', 'column', 'text', 'badge', 'progress', 'spacer', 'divider']) {
+  for (const invalid of [{action:'hidden-action'}, {items:[{type:'text',text:'Hidden'}]},
+    {items:{}}, {options:[{value:'hidden',text:'Hidden'}]}, {options:{}}, {children:{}}]) {
+    context.invalidSummaryNode = {type, ...invalid}
+    assert.throws(() => runInContext('nora.ui.tabBar({children:tabChildren,items:[{type:"row",children:[{type:"column",children:[invalidSummaryNode]}]}]})', context), /tab bar summary/)
+  }
+}
+for (const children of [[], [{type:'text'}], [{type:'button',value:'arbitrary'}],
+  [{type:'button',value:'selected'}, {type:'button',value:'selected'}], [{type:'button',action:' \n'}]]) {
+  context.invalidSummaryTabs = children
+  assert.throws(() => runInContext('nora.ui.tabBar({children:invalidSummaryTabs,items:[tabSummary]})', context), /tab bar|native row action/)
+}
 for (const items of [42, true, {}, 'summary', [null], [42], [{ type: 'row' }], [{ type: 'column' }, { type: 'column' }],
   [{ type: 'column', children: {} }], [{ type: 'column', children: [null] }],
   [{ type: 'column', children: [{ type: 'column', items: [{ type: 'text', text: 'Hidden' }] }] }],
@@ -199,7 +242,7 @@ for (const kind of ['detail', 'tabBar', 'splitView', 'itemRow']) {
     context.invalidChildren = children
     assert.throws(() => runInContext('nora.ui.node(detailKind,{children:invalidChildren})', context), /child arrays/)
   }
-  assert.throws(() => runInContext('nora.ui.node(detailKind,{items:[nora.ui.text("Dropped")]})', context), kind === 'detail' ? /detail aside/ : /do not accept items/)
+  assert.throws(() => runInContext('nora.ui.node(detailKind,{items:[nora.ui.text("Dropped")]})', context), kind === 'detail' ? /detail aside/ : kind === 'tabBar' ? /tab bar summary/ : /do not accept items/)
 }
 for (const action of ['', ' \n', 42, true, [], {}, '界'.repeat(86), '\ud800']) {
   context.invalidRowAction = action

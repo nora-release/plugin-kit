@@ -30,6 +30,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         /// existing avatar in a leading gutter and its name beside the metadata. value is "comment" (default) or "event".
         case timelineItem
         /// Children are native tab buttons. A button with value "selected" marks the active tab; subtitle is its count.
+        /// Items may contain one row of static trailing metadata. Gate it with nora.features?.tabBarSummary === true.
         case tabBar
         /// Two independently scrolling panes: a 248-point list and flexible detail. At narrow widths value "detail"
         /// shows the detail pane; other values show the list. action and text provide the optional back button.
@@ -258,10 +259,14 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
                 throw NoraPluginValidationError.invalid("timeline item", "requires an author button, metadata row, optional body column, an optional comment or event value, and no container action or items")
             }
         case .tabBar:
-            guard items.isEmpty, !children.isEmpty,
+            guard !children.isEmpty,
                   children.allSatisfy({ $0.type == .button && ($0.value == nil || $0.value == "selected") }),
                   children.filter({ $0.value == "selected" }).count <= 1 else {
                 throw NoraPluginValidationError.invalid("tab bar", "requires button children with at most one selected value")
+            }
+            guard items.count <= 1, items.first.map({ $0.type == .row }) ?? true,
+                  Self.hasOnlyStaticMetadata(items) else {
+                throw NoraPluginValidationError.invalid("tab bar summary", "accepts at most one row of bounded static metadata, without actions, controls, nested layouts, item arrays, or options")
             }
             for child in children { try child.validateOptionalRowAction() }
         case .splitView:
@@ -270,7 +275,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
             }
             try validateOptionalRowAction()
         case .itemRow:
-            guard items.isEmpty, value == nil || value == "selected", hasOnlyStaticMetadata else {
+            guard items.isEmpty, value == nil || value == "selected", Self.hasOnlyStaticMetadata(children) else {
                 throw NoraPluginValidationError.invalid("item row", "requires static metadata children and an optional selected value")
             }
             try validateOptionalRowAction()
@@ -286,8 +291,8 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         }
     }
 
-    private var hasOnlyStaticMetadata: Bool {
-        var pending = children
+    private static func hasOnlyStaticMetadata(_ nodes: [Self]) -> Bool {
+        var pending = nodes
         var count = 0
         while let node = pending.popLast() {
             count += 1
