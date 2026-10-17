@@ -179,14 +179,16 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     }
 
     public func validateDocument() throws {
-        try validate(maximumBytes: Self.maximumDocumentBytes, maximumNodes: Self.maximumDocumentNodes)
+        try validate(maximumBytes: Self.maximumDocumentBytes, maximumNodes: Self.maximumDocumentNodes, outputFormatting: [.withoutEscapingSlashes])
     }
 
-    private func validate(maximumBytes: Int, maximumNodes: Int) throws {
+    private func validate(maximumBytes: Int, maximumNodes: Int, outputFormatting: JSONEncoder.OutputFormatting = []) throws {
         var count = 0
         var identifiers = Set<String>()
         try validate(depth: 0, count: &count, identifiers: &identifiers, maximumNodes: maximumNodes)
-        guard try JSONEncoder().encode(self).count <= maximumBytes else {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = outputFormatting
+        guard try encoder.encode(self).count <= maximumBytes else {
             throw NoraPluginValidationError.invalid("view", "exceeds its byte limit")
         }
     }

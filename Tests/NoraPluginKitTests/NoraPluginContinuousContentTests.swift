@@ -29,6 +29,21 @@ struct NoraPluginContinuousContentTests {
         #expect(throws: NoraPluginValidationError.self) { try view.validate() }
     }
 
+    @Test("Document validation measures slashes without doubling their transport size")
+    func slashRichDocuments() throws {
+        let body = String(repeating: "/", count: NoraPluginView.maximumDocumentTextBytes)
+        let view = NoraPluginView(type: .lazyColumn, children: (0..<5).map {
+            .init(type: .document, id: "body-\($0)", text: body)
+        })
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        let data = try encoder.encode(view)
+        #expect(data.count < NoraPluginView.maximumDocumentBytes)
+        let decoded = try NoraPluginView.decodeDocument(data)
+        #expect(decoded.children.count == 5)
+        #expect(decoded.children.last?.text?.utf8.count == body.utf8.count)
+    }
+
     @Test("Large documents preserve safety and identity validation")
     func validatesCompleteTree() throws {
         #expect(throws: NoraPluginValidationError.self) {
