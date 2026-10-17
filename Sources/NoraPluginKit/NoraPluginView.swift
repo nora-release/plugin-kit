@@ -3,6 +3,9 @@ import Foundation
 public struct NoraPluginView: Codable, Hashable, Sendable {
     public static let maximumBytes = 512 * 1024
     public static let maximumNodes = 1000
+    public static let maximumDocumentBytes = 16 * 1024 * 1024
+    public static let maximumDocumentNodes = 32 * 1024
+    public static let maximumDocumentTextBytes = 2 * 1024 * 1024
     public static let maximumDepth = 32
     public static let maximumAvatarBase64Characters = 128 * 1024
     public static let maximumAvatarBytes = 96 * 1024
@@ -11,6 +14,10 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
 
     public enum Kind: String, Codable, Hashable, Sendable, CaseIterable {
         case column, row, text, button, textField, secureField, picker, list
+        /// Continuous native content in its enclosing scroll view, with optional automatic bottom loading.
+        case lazyColumn
+        /// Complete native Markdown parsed as one document, at most 2 MiB UTF-8.
+        case document
         /// Native multiline input bound through values[id]. Return inserts a newline without invoking action.
         case textEditor
         case divider, spacer, badge, progress
@@ -82,7 +89,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public let placeholder: String?
     public let action: String?
     public let value: String?
-    /// Sidebar-only action invoked when its list reaches the bottom. Pair with loadMoreToken.
+    /// Sidebar or lazyColumn action invoked when its content reaches the bottom. Pair with loadMoreToken.
     public let loadMoreAction: String?
     /// An opaque pagination revision, at most 256 UTF-8 bytes. Change after loading each page.
     public let loadMoreToken: String?
@@ -158,18 +165,35 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         return view
     }
 
+    public static func decodeDocument(_ data: Data) throws -> Self {
+        guard data.count <= maximumDocumentBytes else {
+            throw NoraPluginValidationError.invalid("view document", "exceeds 16 MiB")
+        }
+        let view = try JSONDecoder().decode(Self.self, from: data)
+        try view.validateDocument()
+        return view
+    }
+
     public func validate() throws {
+        try validate(maximumBytes: Self.maximumBytes, maximumNodes: Self.maximumNodes)
+    }
+
+    public func validateDocument() throws {
+        try validate(maximumBytes: Self.maximumDocumentBytes, maximumNodes: Self.maximumDocumentNodes)
+    }
+
+    private func validate(maximumBytes: Int, maximumNodes: Int) throws {
         var count = 0
         var identifiers = Set<String>()
-        try validate(depth: 0, count: &count, identifiers: &identifiers)
-        guard try JSONEncoder().encode(self).count <= Self.maximumBytes else {
-            throw NoraPluginValidationError.invalid("view", "exceeds 512 KiB")
+        try validate(depth: 0, count: &count, identifiers: &identifiers, maximumNodes: maximumNodes)
+        guard try JSONEncoder().encode(self).count <= maximumBytes else {
+            throw NoraPluginValidationError.invalid("view", "exceeds its byte limit")
         }
     }
 
-    private func validate(depth: Int, count: inout Int, identifiers: inout Set<String>) throws {
+    private func validate(depth: Int, count: inout Int, identifiers: inout Set<String>, maximumNodes: Int) throws {
         count += 1
-        guard depth < Self.maximumDepth, count <= Self.maximumNodes else {
+        guard depth < Self.maximumDepth, count <= maximumNodes else {
             throw NoraPluginValidationError.invalid("view", "exceeds its depth or node limit")
         }
         if let id {
@@ -177,7 +201,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
                 throw NoraPluginValidationError.invalid("view id", "must be nonempty, bounded, and unique")
             }
         }
-        guard text?.utf8.count ?? 0 <= 64 * 1024,
+        guard text?.utf8.count ?? 0 <= (type == .document ? Self.maximumDocumentTextBytes : 64 * 1024),
               subtitle?.utf8.count ?? 0 <= 4096,
               placeholder?.utf8.count ?? 0 <= 1024, action?.utf8.count ?? 0 <= 256,
               value?.utf8.count ?? 0 <= (type == .textEditor ? Self.maximumTextEditorValueBytes : 4096), options.count <= 1000,
@@ -207,10 +231,10 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
             try NoraPluginIconAsset.validate(data: data, path: "icon.svg")
         }
         if loadMoreAction != nil || loadMoreToken != nil {
-            guard type == .sidebar,
+            guard type == .sidebar || type == .lazyColumn,
                   let loadMoreAction, !loadMoreAction.isEmpty, loadMoreAction.utf8.count <= 256,
                   let loadMoreToken, !loadMoreToken.isEmpty, loadMoreToken.utf8.count <= 256 else {
-                throw NoraPluginValidationError.invalid("sidebar pagination", "requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar")
+                throw NoraPluginValidationError.invalid("sidebar pagination", "requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar or lazyColumn")
             }
         }
         if type == .workspace {
@@ -223,7 +247,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         }
         try validateDetailShape()
         try validateDiffShape()
-        for child in children + items { try child.validate(depth: depth + 1, count: &count, identifiers: &identifiers) }
+        for child in children + items { try child.validate(depth: depth + 1, count: &count, identifiers: &identifiers, maximumNodes: maximumNodes) }
     }
 
     private func validateDiffShape() throws {
@@ -243,6 +267,17 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
 
     private func validateDetailShape() throws {
         switch type {
+        case .document:
+            guard let text, !text.isEmpty, children.isEmpty, items.isEmpty, options.isEmpty,
+                  action == nil, value == nil, placeholder == nil, symbol == nil, textStyle == nil,
+                  tone == nil, appearance == nil, avatarBase64 == nil, iconSVG == nil,
+                  loadMoreAction == nil, loadMoreToken == nil else {
+                throw NoraPluginValidationError.invalid("document", "requires complete Markdown text and no interactive or styled content")
+            }
+        case .lazyColumn:
+            guard items.isEmpty, options.isEmpty, action == nil else {
+                throw NoraPluginValidationError.invalid("lazy column", "accepts children and optional automatic bottom loading")
+            }
         case .detail:
             guard children.count >= 4,
                   children[0].type == .toolbar, children[1].type == .column, children[2].type == .tabBar else {

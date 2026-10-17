@@ -2,7 +2,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   if (typeof request !== 'function') throw new Error('Nora host transport is unavailable.')
   const panels = new Map()
   const commands = new Map()
-  const kinds = ['column', 'row', 'text', 'button', 'textField', 'textEditor', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
+  const kinds = ['column', 'lazyColumn', 'document', 'row', 'text', 'button', 'textField', 'textEditor', 'secureField', 'picker', 'list', 'divider', 'spacer', 'badge', 'progress',
     'workspace', 'sidebar', 'toolbar', 'detail', 'timelineItem', 'tabBar', 'splitView', 'itemRow', 'navigationItem', 'collection', 'collectionItem', 'menu', 'emptyState', 'markdown', 'diff']
   const textStyles = ['title', 'headline', 'body', 'caption', 'monospaced']
   const tones = ['neutral', 'accent', 'success', 'warning', 'danger', 'muted', 'purple']
@@ -143,8 +143,18 @@ export default function createNoraPluginAPI(request, locale = 'en') {
       throw new Error('Nora view icon SVG must be a nonempty string of at most 16 KiB UTF-8 on a badge, itemRow, or button.')
     }
     if ((properties.loadMoreAction != null || properties.loadMoreToken != null)
-      && (type !== 'sidebar' || !validBoundedString(properties.loadMoreAction, 256) || !validBoundedString(properties.loadMoreToken, 256))) {
-      throw new Error('Nora sidebar pagination requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar.')
+      && (!['sidebar', 'lazyColumn'].includes(type) || !validBoundedString(properties.loadMoreAction, 256) || !validBoundedString(properties.loadMoreToken, 256))) {
+      throw new Error('Nora sidebar pagination requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar or lazyColumn.')
+    }
+    if (type === 'document' && (!validBoundedString(properties.text, 2 * 1024 * 1024)
+      || ['children', 'items', 'options'].some(key => properties[key] != null && (!Array.isArray(properties[key]) || properties[key].length))
+      || ['action', 'value', 'placeholder', 'symbol', 'textStyle', 'tone', 'appearance', 'avatarBase64', 'iconSVG',
+        'loadMoreAction', 'loadMoreToken'].some(key => properties[key] != null) || children != null && (!Array.isArray(children) || children.length))) {
+      throw new Error('Nora document requires complete Markdown of at most 2 MiB UTF-8 and no interactive or styled content.')
+    }
+    if (type === 'lazyColumn' && (properties.action != null
+      || ['items', 'options'].some(key => properties[key] != null && (!Array.isArray(properties[key]) || properties[key].length)))) {
+      throw new Error('Nora lazy column accepts children and optional automatic bottom loading.')
     }
     const view = { ...properties, ...(children === undefined ? {} : { children }), type }
     validateDetailShape(view)
@@ -166,7 +176,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const api = {
     locale: String(locale),
-    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true }),
+    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true, continuousContent: true }),
     ui: Object.freeze(ui),
     panels: Object.freeze({
       invalidate: panelID => Promise.resolve().then(() => {
@@ -190,8 +200,62 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     request: (method, parameters = {}) => Promise.resolve().then(() => request(method, parameters)),
   }
   Object.defineProperty(globalThis, 'nora', { value: Object.freeze(api), writable: false, configurable: false })
+  const documents = new Map()
+  let documentSequence = 0
+  const byteLength = text => {
+    let bytes = 0
+    for (const character of text) {
+      const point = character.codePointAt(0)
+      bytes += point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4
+    }
+    return bytes
+  }
+  const documentChunks = text => {
+    const chunks = []
+    let start = 0
+    let offset = 0
+    let bytes = 0
+    for (const character of text) {
+      const size = byteLength(character)
+      if (bytes + size > 64 * 1024) {
+        chunks.push(text.slice(start, offset))
+        start = offset
+        bytes = 0
+      }
+      offset += character.length
+      bytes += size
+    }
+    if (start < text.length) chunks.push(text.slice(start))
+    return chunks
+  }
+  const panelResult = (panelID, view) => {
+    const json = JSON.stringify(view)
+    if (typeof json !== 'string') throw new Error('Nora panel must return a view.')
+    const byteCount = byteLength(json)
+    if (byteCount > 16 * 1024 * 1024) throw new Error('Nora view document exceeds 16 MiB.')
+    if (byteCount <= 512 * 1024) return view
+    const token = `document-${++documentSequence}`
+    const chunks = documentChunks(json)
+    documents.set(token, { panelID, chunks })
+    while (documents.size > 2) documents.delete(documents.keys().next().value)
+    return { noraViewDocument: { token, chunkCount: chunks.length, byteCount } }
+  }
+  const invokePanel = async (panelID, event = {}) => {
+    if (Object.prototype.hasOwnProperty.call(event, 'contentTransfer')) {
+      const transfer = event.contentTransfer
+      const document = documents.get(transfer?.token)
+      if (!panels.has(panelID) || !document || document.panelID !== panelID
+        || !Number.isSafeInteger(transfer.index) || transfer.index < 0 || transfer.index >= document.chunks.length
+        || event.action != null || event.actionCapability != null) {
+        throw new Error('Invalid Nora view document transfer.')
+      }
+      return { noraViewChunk: { token: transfer.token, index: transfer.index, text: document.chunks[transfer.index] } }
+    }
+    const view = await invoke(panels, panelID, { ...event, locale: String(locale), values: event.values ?? {} })
+    return panelResult(panelID, view)
+  }
   return Object.freeze({
-    invokePanel: (id, event = {}) => invoke(panels, id, { ...event, locale: String(locale), values: event.values ?? {} }),
+    invokePanel,
     invokeCommand: (id, arguments_ = {}) => invoke(commands, id, arguments_),
   })
 }

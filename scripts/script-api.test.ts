@@ -344,7 +344,7 @@ for (const value of ['', 42, true, [], {}, 'x'.repeat(257), 'Ã©'.repeat(129), 'ç
   assert.throws(() => runInContext('nora.ui.sidebar({loadMoreAction:paginationValue,loadMoreToken:"2"})', context), /sidebar pagination/)
   assert.throws(() => runInContext('nora.ui.sidebar({loadMoreAction:"next",loadMoreToken:paginationValue})', context), /sidebar pagination/)
 }
-const viewKinds = runInContext('Object.keys(nora.ui).filter(kind => kind !== "node" && kind !== "sidebar")', context)
+const viewKinds = runInContext('Object.keys(nora.ui).filter(kind => kind !== "node" && kind !== "sidebar" && kind !== "lazyColumn")', context)
 for (const kind of viewKinds) {
   context.paginationKind = kind
   assert.throws(() => runInContext('nora.ui.node(paginationKind, {loadMoreAction:"next",loadMoreToken:"2"})', context), /sidebar pagination/)

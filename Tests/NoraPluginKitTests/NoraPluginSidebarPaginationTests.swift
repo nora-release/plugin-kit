@@ -47,7 +47,7 @@ struct NoraPluginSidebarPaginationTests {
 
     @Test("Pagination is rejected on every other native view kind")
     func rejectsOtherKinds() {
-        for kind in NoraPluginView.Kind.allCases where kind != .sidebar {
+        for kind in NoraPluginView.Kind.allCases where kind != .sidebar && kind != .lazyColumn {
             let children: [NoraPluginView] = kind == .workspace ? [.init(type: .column)] : []
             #expect(throws: NoraPluginValidationError.self) {
                 try NoraPluginView(type: kind, children: children, loadMoreAction: "next", loadMoreToken: "2").validate()

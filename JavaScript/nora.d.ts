@@ -1,4 +1,4 @@
-export type NoraPluginViewKind = 'column' | 'row' | 'text' | 'button' | 'textField' | 'textEditor' | 'secureField' | 'picker' | 'list' | 'divider' | 'spacer' | 'badge' | 'progress'
+export type NoraPluginViewKind = 'column' | 'lazyColumn' | 'document' | 'row' | 'text' | 'button' | 'textField' | 'textEditor' | 'secureField' | 'picker' | 'list' | 'divider' | 'spacer' | 'badge' | 'progress'
   | 'workspace' | 'sidebar' | 'toolbar' | 'detail' | 'timelineItem' | 'tabBar' | 'splitView' | 'itemRow' | 'navigationItem' | 'collection' | 'collectionItem' | 'menu' | 'emptyState' | 'markdown' | 'diff'
 export type NoraPluginTextStyle = 'title' | 'headline' | 'body' | 'caption' | 'monospaced'
 /** Fixed native palette. Gate purple with nora.features?.purpleTone === true on SDK 0.16+; older hosts reject that tone. */
@@ -22,16 +22,16 @@ export type NoraPluginChatDraftRequest = NoraPluginChatDraft & { actionCapabilit
 export interface NoraPluginView {
   type: NoraPluginViewKind
   id?: string
-  /** diff: nonempty raw unified patch, at most 64 KiB UTF-8. Rendered read-only by Nora's native diff viewer. */
+  /** document: complete native Markdown up to 2 MiB UTF-8, parsed as one body. Gate with continuousContent. diff: nonempty raw unified patch, at most 64 KiB UTF-8. Rendered read-only by Nora's native diff viewer. */
   text?: string
   placeholder?: string
   /** Item actions select a row; collection.action opens it with Space/Enter; workspace.action closes its inspector. splitView.action returns to its list at narrow widths; text labels that button. Omit itemRow.action for a read-only row; provided row/back actions must be nonempty and at most 256 UTF-8 bytes. textEditor never submits on Return; use a separate button action. */
   action?: string
   /** sidebar/collection selection is a child id. Native events write values[parent.id] = selectedChild.id. A tabBar button or itemRow uses "selected" for selection. splitView uses "detail" to show the detail pane at narrow widths, otherwise its list (omit or use "list"). diff accepts "unified" (default) or "split" layout. textEditor preserves multiline plain text, at most 64 KiB UTF-8, bound through values[id]; other values are limited to 4 KiB. */
   value?: string
-  /** Sidebar-only action invoked when the list reaches its bottom. Pair with loadMoreToken; both strings must be nonempty and at most 256 UTF-8 bytes. Omit both when no more pages remain. */
+  /** Sidebar or lazyColumn action invoked when the list reaches its bottom. Pair with loadMoreToken; both strings must be nonempty and at most 256 UTF-8 bytes. Omit both when no more pages remain. */
   loadMoreAction?: string
-  /** Sidebar-only opaque pagination revision. Change after each page so the host can request the next page once. */
+  /** Sidebar or lazyColumn opaque pagination revision. Change after each page so the host can request the next page once. */
   loadMoreToken?: string
   options?: { value: string; text: string }[]
   /** detail: optional single column for a separate summary aside (SDK 0.14+). Its tree accepts column/row/text/button/picker/menu/divider/spacer/badge/progress/emptyState/markdown/itemRow, and no nested items. The host controls the aside width, scrolling, and compact placement. Existing detail children keep their original order. tabBar: optional single row of static trailing metadata (SDK 0.18+), accepting row/column/text/badge/progress/spacer/divider, without actions, input controls, nested layouts, items, or options anywhere in its tree. The host controls placement and available width. Gate it with nora.features?.tabBarSummary === true; omit items on older hosts. splitView/itemRow/timelineItem never accept items. */
@@ -94,7 +94,7 @@ export type NoraPluginUI = Record<Exclude<NoraPluginViewKind, 'diff' | 'timeline
 export interface NoraPluginAPI {
   readonly locale: string
   /** Optional layout capabilities supplied by this SDK's matching native host. Older hosts may omit features. */
-  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean; tabBarSummary: boolean }>
+  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean; tabBarSummary: boolean; continuousContent: boolean }>
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI
@@ -120,10 +120,14 @@ export interface NoraPluginAPI {
   request(method: string, parameters?: Record<string, unknown>): Promise<unknown>
 }
 
+/** Internal bounded wire transfer used by matching hosts; plugin panel handlers never receive these requests. */
+export interface NoraPluginViewDocumentTransfer { noraViewDocument: { token: string; chunkCount: number; byteCount: number } }
+export interface NoraPluginViewDocumentChunk { noraViewChunk: { token: string; index: number; text: string } }
+
 export default function createNoraPluginAPI(
   request: (method: string, parameters: Record<string, unknown>) => unknown | Promise<unknown>, locale?: string
 ): {
-  invokePanel(id: string, event?: Partial<NoraPluginPanelEvent>): Promise<NoraPluginView>
+  invokePanel(id: string, event?: Partial<NoraPluginPanelEvent> & { contentTransfer?: { token: string; index: number } }): Promise<NoraPluginView | NoraPluginViewDocumentTransfer | NoraPluginViewDocumentChunk>
   invokeCommand(id: string, arguments_?: Record<string, unknown>): Promise<unknown>
 }
 
