@@ -13,6 +13,7 @@ test:
 	$(NODE) scripts/plugin-marketplace.test.ts
 	$(NODE) scripts/script-api.test.ts
 	$(NODE) scripts/continuous-content.test.ts
+	$(NODE) scripts/file-icons.test.ts
 	PYTHONDONTWRITEBYTECODE=1 python3 scripts/build-script-plugin.test.py
 
 example:

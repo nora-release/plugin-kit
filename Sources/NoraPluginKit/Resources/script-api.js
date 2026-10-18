@@ -121,7 +121,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
       || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(view.subtitle)
       || (view.value != null && !['unified', 'split'].includes(view.value))
       || ['children', 'items', 'options'].some(key => view[key] != null && (!Array.isArray(view[key]) || view[key].length))
-      || ['action', 'placeholder', 'symbol', 'textStyle', 'tone', 'appearance', 'avatarBase64', 'iconSVG',
+      || ['action', 'placeholder', 'symbol', 'textStyle', 'tone', 'appearance', 'avatarBase64', 'iconSVG', 'fileIconPath',
         'loadMoreAction', 'loadMoreToken'].some(key => view[key] != null)) {
       throw new Error('Nora diff requires a nonempty patch of at most 64 KiB UTF-8, a single-line filename hint of at most 4 KiB UTF-8, an optional unified/split layout, and no interactive or styled content.')
     }
@@ -142,13 +142,17 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     if (properties.iconSVG != null && (!['badge', 'itemRow', 'button'].includes(type) || !validBoundedString(properties.iconSVG, 16 * 1024))) {
       throw new Error('Nora view icon SVG must be a nonempty string of at most 16 KiB UTF-8 on a badge, itemRow, or button.')
     }
+    if (properties.fileIconPath != null && (type !== 'itemRow' || !validBoundedString(properties.fileIconPath, 4096)
+      || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(properties.fileIconPath))) {
+      throw new Error('Nora view file icon path must be a nonempty single-line filename hint of at most 4 KiB UTF-8 on an itemRow.')
+    }
     if ((properties.loadMoreAction != null || properties.loadMoreToken != null)
       && (!['sidebar', 'lazyColumn'].includes(type) || !validBoundedString(properties.loadMoreAction, 256) || !validBoundedString(properties.loadMoreToken, 256))) {
       throw new Error('Nora sidebar pagination requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar or lazyColumn.')
     }
     if (type === 'document' && (!validBoundedString(properties.text, 2 * 1024 * 1024)
       || ['children', 'items', 'options'].some(key => properties[key] != null && (!Array.isArray(properties[key]) || properties[key].length))
-      || ['action', 'value', 'placeholder', 'symbol', 'textStyle', 'tone', 'appearance', 'avatarBase64', 'iconSVG',
+      || ['action', 'value', 'placeholder', 'symbol', 'textStyle', 'tone', 'appearance', 'avatarBase64', 'iconSVG', 'fileIconPath',
         'loadMoreAction', 'loadMoreToken'].some(key => properties[key] != null) || children != null && (!Array.isArray(children) || children.length))) {
       throw new Error('Nora document requires complete Markdown of at most 2 MiB UTF-8 and no interactive or styled content.')
     }
@@ -176,7 +180,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const api = {
     locale: String(locale),
-    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true, continuousContent: true }),
+    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true, continuousContent: true, fileIcons: true }),
     ui: Object.freeze(ui),
     panels: Object.freeze({
       invalidate: panelID => Promise.resolve().then(() => {

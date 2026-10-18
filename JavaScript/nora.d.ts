@@ -50,6 +50,8 @@ export interface NoraPluginView {
   avatarBase64?: string
   /** Static SVG glyph on badge, itemRow, or button, nonempty and at most 16 KiB UTF-8. The native host validates static vector markup and renders it as a template tinted by tone; symbol remains the fallback. No scripts, entities, or linked resources. Gate itemRow SVGs with nora.features?.itemRowIcon === true on SDK 0.15+, and button SVGs with nora.features?.buttonIcon === true on SDK 0.17+; older hosts retain the symbol fallback. */
   iconSVG?: string
+  /** Native file icon for an itemRow. Nonempty filename/path hint, at most 4 KiB UTF-8 without control, format, line separator, or paragraph separator characters. Display metadata only; never requests local file access or additional permissions. The host uses the same icons as Nora's file sidebar and prioritizes this over iconSVG and symbol. Gate with nora.features?.fileIcons === true on SDK 0.20+; omit on older hosts and retain a symbol fallback. */
+  fileIconPath?: string
 }
 
 export interface NoraPluginPanelEvent {
@@ -94,7 +96,7 @@ export type NoraPluginUI = Record<Exclude<NoraPluginViewKind, 'diff' | 'timeline
 export interface NoraPluginAPI {
   readonly locale: string
   /** Optional layout capabilities supplied by this SDK's matching native host. Older hosts may omit features. */
-  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean; tabBarSummary: boolean; continuousContent: boolean }>
+  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean; tabBarSummary: boolean; continuousContent: boolean; fileIcons: boolean }>
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI

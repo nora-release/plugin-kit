@@ -10,6 +10,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public static let maximumAvatarBase64Characters = 128 * 1024
     public static let maximumAvatarBytes = 96 * 1024
     public static let maximumIconSVGBytes = 16 * 1024
+    public static let maximumFileIconPathBytes = 4096
     public static let maximumTextEditorValueBytes = 64 * 1024
 
     public enum Kind: String, Codable, Hashable, Sendable, CaseIterable {
@@ -107,13 +108,17 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     /// Static SVG glyph for a badge, itemRow, or button. Native template rendering applies tone; symbol remains a fallback.
     /// Gate button SVGs with nora.features?.buttonIcon === true on SDK 0.17 or newer.
     public let iconSVG: String?
+    /// Filename or path hint for the host's native file icon on an itemRow. Display metadata only, with no file access.
+    /// Gate with nora.features?.fileIcons === true. The native icon takes precedence over SVG and symbol fallbacks.
+    public let fileIconPath: String?
 
     public init(type: Kind, id: String? = nil, text: String? = nil, placeholder: String? = nil,
                 action: String? = nil, value: String? = nil, options: [Option] = [],
                 items: [NoraPluginView] = [], children: [NoraPluginView] = [], disabled: Bool = false,
                 subtitle: String? = nil, symbol: String? = nil, textStyle: TextStyle? = nil,
                 tone: Tone? = nil, appearance: Appearance? = nil, avatarBase64: String? = nil,
-                loadMoreAction: String? = nil, loadMoreToken: String? = nil, iconSVG: String? = nil) {
+                loadMoreAction: String? = nil, loadMoreToken: String? = nil, iconSVG: String? = nil,
+                fileIconPath: String? = nil) {
         self.type = type
         self.id = id
         self.text = text
@@ -133,6 +138,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         self.appearance = appearance
         self.avatarBase64 = avatarBase64
         self.iconSVG = iconSVG
+        self.fileIconPath = fileIconPath
     }
 
     public init(from decoder: any Decoder) throws {
@@ -156,6 +162,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         appearance = try values.decodeIfPresent(Appearance.self, forKey: .appearance)
         avatarBase64 = try values.decodeIfPresent(String.self, forKey: .avatarBase64)
         iconSVG = try values.decodeIfPresent(String.self, forKey: .iconSVG)
+        fileIconPath = try values.decodeIfPresent(String.self, forKey: .fileIconPath)
     }
 
     public static func decode(_ data: Data) throws -> Self {
@@ -232,6 +239,14 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
             }
             try NoraPluginIconAsset.validate(data: data, path: "icon.svg")
         }
+        if let fileIconPath {
+            guard type == .itemRow, !fileIconPath.isEmpty, fileIconPath.utf8.count <= Self.maximumFileIconPathBytes,
+                  !fileIconPath.unicodeScalars.contains(where: {
+                      [.control, .format, .lineSeparator, .paragraphSeparator].contains($0.properties.generalCategory)
+                  }) else {
+                throw NoraPluginValidationError.invalid("view file icon path", "must be a nonempty single-line filename hint of at most 4 KiB UTF-8 on an itemRow")
+            }
+        }
         if loadMoreAction != nil || loadMoreToken != nil {
             guard type == .sidebar || type == .lazyColumn,
                   let loadMoreAction, !loadMoreAction.isEmpty, loadMoreAction.utf8.count <= 256,
@@ -261,7 +276,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
               }), value == nil || value == "unified" || value == "split",
               children.isEmpty, items.isEmpty, options.isEmpty,
               action == nil, placeholder == nil, symbol == nil, textStyle == nil,
-              tone == nil, appearance == nil, avatarBase64 == nil, iconSVG == nil,
+              tone == nil, appearance == nil, avatarBase64 == nil, iconSVG == nil, fileIconPath == nil,
               loadMoreAction == nil, loadMoreToken == nil else {
             throw NoraPluginValidationError.invalid("diff", "requires a nonempty patch, a single-line filename hint, an optional unified/split layout, and no interactive or styled content")
         }
@@ -272,7 +287,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         case .document:
             guard let text, !text.isEmpty, children.isEmpty, items.isEmpty, options.isEmpty,
                   action == nil, value == nil, placeholder == nil, symbol == nil, textStyle == nil,
-                  tone == nil, appearance == nil, avatarBase64 == nil, iconSVG == nil,
+                  tone == nil, appearance == nil, avatarBase64 == nil, iconSVG == nil, fileIconPath == nil,
                   loadMoreAction == nil, loadMoreToken == nil else {
                 throw NoraPluginValidationError.invalid("document", "requires complete Markdown text and no interactive or styled content")
             }
