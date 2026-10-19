@@ -139,8 +139,8 @@ export default function createNoraPluginAPI(request, locale = 'en') {
     if (properties.avatarBase64 != null && (!['menu', 'button', 'navigationItem'].includes(type) || !validAvatar(properties.avatarBase64))) {
       throw new Error('Nora view avatar must contain bounded standard Base64 data on a native label.')
     }
-    if (properties.iconSVG != null && (!['badge', 'itemRow', 'button'].includes(type) || !validBoundedString(properties.iconSVG, 16 * 1024))) {
-      throw new Error('Nora view icon SVG must be a nonempty string of at most 16 KiB UTF-8 on a badge, itemRow, or button.')
+    if (properties.iconSVG != null && (!['badge', 'itemRow', 'button', 'navigationItem'].includes(type) || !validBoundedString(properties.iconSVG, 16 * 1024))) {
+      throw new Error('Nora view icon SVG must be a nonempty string of at most 16 KiB UTF-8 on a badge, itemRow, button, or navigationItem.')
     }
     if (properties.fileIconPath != null && (type !== 'itemRow' || !validBoundedString(properties.fileIconPath, 4096)
       || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(properties.fileIconPath))) {
@@ -180,7 +180,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const api = {
     locale: String(locale),
-    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true, continuousContent: true, fileIcons: true }),
+    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true, continuousContent: true, fileIcons: true, navigationItemIcon: true }),
     ui: Object.freeze(ui),
     panels: Object.freeze({
       invalidate: panelID => Promise.resolve().then(() => {

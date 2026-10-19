@@ -17,11 +17,13 @@ assert.equal(runInContext('nora.features?.itemRowIcon === true', context), true)
 assert.equal(runInContext('nora.features?.purpleTone === true', context), true)
 assert.equal(runInContext('nora.features?.buttonIcon === true', context), true)
 assert.equal(runInContext('nora.features?.tabBarSummary === true', context), true)
+assert.equal(runInContext('nora.features?.navigationItemIcon === true', context), true)
 assert.throws(() => runInContext('"use strict"; nora.features.detailAside = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.itemRowIcon = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.purpleTone = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.buttonIcon = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.tabBarSummary = false', context))
+assert.throws(() => runInContext('"use strict"; nora.features.navigationItemIcon = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features = {}', context))
 assert.equal(runInContext('({}).features?.detailAside === true', context), false, 'Older hosts without features safely select the existing detail layout')
 assert.equal(runInContext('({features:{detailAside:true}}).features?.itemRowIcon === true', context), false, 'SDK 0.14 hosts safely retain the item row symbol fallback')
@@ -30,6 +32,8 @@ assert.equal(runInContext('({}).features?.buttonIcon === true', context), false,
 assert.equal(runInContext('({features:{detailAside:true,itemRowIcon:true,purpleTone:true}}).features?.buttonIcon === true', context), false, 'SDK 0.16 hosts safely retain the button symbol fallback')
 assert.equal(runInContext('({}).features?.tabBarSummary === true', context), false, 'Older hosts without features safely omit tab bar summary items')
 assert.equal(runInContext('({features:{detailAside:true,itemRowIcon:true,purpleTone:true,buttonIcon:true}}).features?.tabBarSummary === true', context), false, 'SDK 0.17 hosts safely retain the existing tab bar shape')
+assert.equal(runInContext('({}).features?.navigationItemIcon === true', context), false, 'Older hosts without features safely retain navigation symbols')
+assert.equal(runInContext('({features:{fileIcons:true,buttonIcon:true}}).features?.navigationItemIcon === true', context), false, 'SDK 0.20 hosts safely retain navigation symbols')
 for (const kind of ['text', 'badge', 'itemRow']) {
   context.purpleKind = kind
   const view = runInContext('nora.ui.node(purpleKind,{text:"Merged",tone:"purple"})', context)
@@ -376,6 +380,17 @@ for (const glyph of glyphs) {
   assert.equal(button.disabled, true)
   context.iconButton = button
   assert.equal(runInContext('nora.ui.tabBar({children:[iconButton]}).children[0].iconSVG', context), glyph)
+  const navigation = runInContext('nora.ui.navigationItem({id:"view-issues",text:"Issues",iconSVG:badgeGlyph,symbol:"questionmark.bubble",tone:"muted",action:"kind:issues",disabled:true,avatarBase64:"AA==",children:[nora.ui.badge({text:"Open",tone:"success"})]})', context)
+  assert.equal(navigation.iconSVG, glyph)
+  assert.equal(navigation.symbol, 'questionmark.bubble')
+  assert.equal(navigation.action, 'kind:issues')
+  assert.equal(navigation.disabled, true)
+  assert.equal(navigation.avatarBase64, 'AA==')
+  assert.equal(navigation.children[0].text, 'Open')
+  context.iconNavigation = navigation
+  const sidebar = runInContext('nora.ui.sidebar({id:"view-navigation",value:"view-issues",items:[iconNavigation]})', context)
+  assert.equal(sidebar.value, navigation.id)
+  assert.equal(sidebar.items[0].iconSVG, glyph)
 }
 assert.equal(runInContext('nora.ui.badge({text:"Legacy"})', context).iconSVG, undefined)
 assert.equal(runInContext('nora.ui.badge({iconSVG:null})', context).iconSVG, null)
@@ -383,20 +398,24 @@ assert.equal(runInContext('nora.ui.itemRow({text:"Legacy"})', context).iconSVG, 
 assert.equal(runInContext('nora.ui.itemRow({iconSVG:null})', context).iconSVG, null)
 assert.equal(runInContext('nora.ui.button({text:"Legacy",symbol:"bubble.left.and.bubble.right"})', context).iconSVG, undefined)
 assert.equal(runInContext('nora.ui.button({iconSVG:null})', context).iconSVG, null)
+assert.equal(runInContext('nora.ui.navigationItem({text:"Legacy",symbol:"questionmark.bubble"})', context).iconSVG, undefined)
+assert.equal(runInContext('nora.ui.navigationItem({iconSVG:null})', context).iconSVG, null)
 for (const value of ['x'.repeat(16 * 1024), '界'.repeat(Math.floor(16 * 1024 / 3)) + 'x']) {
   assert.equal(Buffer.byteLength(value, 'utf8'), 16 * 1024)
   context.badgeGlyph = value
   assert.equal(runInContext('nora.ui.badge({iconSVG:badgeGlyph})', context).iconSVG, value)
   assert.equal(runInContext('nora.ui.itemRow({iconSVG:badgeGlyph})', context).iconSVG, value)
   assert.equal(runInContext('nora.ui.button({iconSVG:badgeGlyph})', context).iconSVG, value)
+  assert.equal(runInContext('nora.ui.navigationItem({iconSVG:badgeGlyph})', context).iconSVG, value)
 }
 for (const value of ['', 42, true, [], {}, 'x'.repeat(16 * 1024 + 1), '界'.repeat(Math.floor(16 * 1024 / 3) + 1), '\ud800', '\udfff']) {
   context.badgeGlyph = value
   assert.throws(() => runInContext('nora.ui.badge({iconSVG:badgeGlyph})', context), /icon SVG/)
   assert.throws(() => runInContext('nora.ui.itemRow({iconSVG:badgeGlyph})', context), /icon SVG/)
   assert.throws(() => runInContext('nora.ui.button({iconSVG:badgeGlyph})', context), /icon SVG/)
+  assert.throws(() => runInContext('nora.ui.navigationItem({iconSVG:badgeGlyph})', context), /icon SVG/)
 }
-for (const kind of runInContext('Object.keys(nora.ui).filter(kind => !["node", "badge", "itemRow", "button"].includes(kind))', context)) {
+for (const kind of runInContext('Object.keys(nora.ui).filter(kind => !["node", "badge", "itemRow", "button", "navigationItem"].includes(kind))', context)) {
   context.glyphKind = kind
   assert.throws(() => runInContext('nora.ui.node(glyphKind, {iconSVG:"<svg/>"})', context), /icon SVG/)
 }

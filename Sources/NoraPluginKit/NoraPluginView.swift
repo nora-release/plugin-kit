@@ -105,8 +105,9 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public let appearance: Appearance?
     /// Inline standard Base64 avatar data for native menu, button, or navigation labels.
     public let avatarBase64: String?
-    /// Static SVG glyph for a badge, itemRow, or button. Native template rendering applies tone; symbol remains a fallback.
+    /// Static SVG glyph for a badge, itemRow, button, or navigationItem. Native template rendering applies tone; symbol remains a fallback.
     /// Gate button SVGs with nora.features?.buttonIcon === true on SDK 0.17 or newer.
+    /// Gate navigation SVGs with nora.features?.navigationItemIcon === true on SDK 0.21 or newer; an avatar takes precedence.
     public let iconSVG: String?
     /// Filename or path hint for the host's native file icon on an itemRow. Display metadata only, with no file access.
     /// Gate with nora.features?.fileIcons === true. The native icon takes precedence over SVG and symbol fallbacks.
@@ -234,8 +235,8 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         }
         if let iconSVG {
             let data = Data(iconSVG.utf8)
-            guard [.badge, .itemRow, .button].contains(type), !data.isEmpty, data.count <= Self.maximumIconSVGBytes else {
-                throw NoraPluginValidationError.invalid("view icon SVG", "must be nonempty static SVG of at most 16 KiB UTF-8 on a badge, itemRow, or button")
+            guard [.badge, .itemRow, .button, .navigationItem].contains(type), !data.isEmpty, data.count <= Self.maximumIconSVGBytes else {
+                throw NoraPluginValidationError.invalid("view icon SVG", "must be nonempty static SVG of at most 16 KiB UTF-8 on a badge, itemRow, button, or navigationItem")
             }
             try NoraPluginIconAsset.validate(data: data, path: "icon.svg")
         }

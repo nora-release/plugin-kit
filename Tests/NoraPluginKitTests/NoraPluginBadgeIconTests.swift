@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import NoraPluginKit
 
-@Suite("Native badge, status row, and button SVG contract")
+@Suite("Native badge, status row, button, and navigation SVG contract")
 struct NoraPluginBadgeIconTests {
     @Test("Static SVG badge glyphs preserve path, circle, group, tone, and symbol fallback")
     func roundTrip() throws {
@@ -67,9 +67,31 @@ struct NoraPluginBadgeIconTests {
         }
     }
 
-    @Test("Inline SVG glyphs are restricted to badge, itemRow, and button nodes")
+    @Test("Navigation SVGs preserve sidebar selection, action, metadata, avatar, and symbol fallback")
+    func navigationRoundTrip() throws {
+        for svg in badgeGlyphs + buttonGlyphs {
+            let item = NoraPluginView(type: .navigationItem, id: "view-issues", text: "Issues", action: "kind:issues",
+                                      children: [.init(type: .badge, text: "Open", tone: .success)], disabled: true,
+                                      symbol: "questionmark.bubble", tone: .muted, avatarBase64: "AA==", iconSVG: svg)
+            let sidebar = NoraPluginView(type: .sidebar, id: "view-navigation", value: "view-issues", items: [item])
+            let decoded = try NoraPluginView.decode(JSONEncoder().encode(sidebar))
+            #expect(decoded == sidebar)
+            #expect(decoded.items[0].iconSVG == svg)
+            #expect(decoded.items[0].avatarBase64 == "AA==")
+            #expect(decoded.items[0].symbol == "questionmark.bubble")
+            #expect(decoded.items[0].action == "kind:issues")
+        }
+        for json in [#"{"type":"navigationItem","text":"Issues","symbol":"questionmark.bubble"}"#,
+                     #"{"type":"navigationItem","text":"Issues","symbol":"questionmark.bubble","iconSVG":null}"#] {
+            let item = try NoraPluginView.decode(Data(json.utf8))
+            #expect(item.iconSVG == nil)
+            #expect(item.symbol == "questionmark.bubble")
+        }
+    }
+
+    @Test("Inline SVG glyphs are restricted to badge, itemRow, button, and navigationItem nodes")
     func rejectsOtherKinds() {
-        for kind in NoraPluginView.Kind.allCases where kind != .badge && kind != .itemRow && kind != .button {
+        for kind in NoraPluginView.Kind.allCases where kind != .badge && kind != .itemRow && kind != .button && kind != .navigationItem {
             let children: [NoraPluginView] = kind == .workspace ? [.init(type: .column)] : []
             #expect(throws: NoraPluginValidationError.self) {
                 try NoraPluginView(type: kind, children: children, iconSVG: "<svg><path/></svg>").validate()
@@ -86,17 +108,17 @@ struct NoraPluginBadgeIconTests {
         let unicode = prefix + String(repeating: "界", count: remaining / 3) + String(repeating: "x", count: remaining % 3) + suffix
         for svg in [ascii, unicode] {
             #expect(svg.utf8.count == NoraPluginView.maximumIconSVGBytes)
-            for kind: NoraPluginView.Kind in [.badge, .itemRow, .button] {
+            for kind: NoraPluginView.Kind in [.badge, .itemRow, .button, .navigationItem] {
                 try NoraPluginView(type: kind, iconSVG: svg).validate()
                 #expect(throws: NoraPluginValidationError.self) { try NoraPluginView(type: kind, iconSVG: svg + " ").validate() }
             }
         }
-        for kind: NoraPluginView.Kind in [.badge, .itemRow, .button] {
+        for kind: NoraPluginView.Kind in [.badge, .itemRow, .button, .navigationItem] {
             #expect(throws: NoraPluginValidationError.self) { try NoraPluginView(type: kind, iconSVG: "").validate() }
         }
     }
 
-    @Test("Badge, status row, and button SVG glyphs share the existing static asset validator", arguments: [
+    @Test("Badge, status row, button, and navigation SVG glyphs share the existing static asset validator", arguments: [
         #"<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///tmp/private">]><svg>&x;</svg>"#,
         "<svg><script>alert(1)</script></svg>", #"<svg><image href="https://example.com/image.png"/></svg>"#,
         ##"<svg><use href="#linked"/></svg>"##, "<svg><foreignObject/></svg>", #"<svg><path onclick="run()"/></svg>"#,
@@ -105,7 +127,7 @@ struct NoraPluginBadgeIconTests {
         "<svg><path></svg>", "<svg>&undefined;</svg>", "<html/>",
     ])
     func rejectsUnsafeMarkup(_ svg: String) {
-        for kind: NoraPluginView.Kind in [.badge, .itemRow, .button] {
+        for kind: NoraPluginView.Kind in [.badge, .itemRow, .button, .navigationItem] {
             #expect(throws: NoraPluginValidationError.self) { try NoraPluginView(type: kind, iconSVG: svg).validate() }
         }
     }
@@ -113,7 +135,7 @@ struct NoraPluginBadgeIconTests {
     @Test("Wire SVG fields reject non-string values")
     func rejectsWrongWireTypes() {
         for value in ["42", "true", "[]", "{}"] {
-            for kind in ["badge", "itemRow", "button"] {
+            for kind in ["badge", "itemRow", "button", "navigationItem"] {
                 let json = #"{"type":"# + "\"\(kind)\"" + #", "iconSVG":"# + value + "}"
                 #expect(throws: DecodingError.self) { try NoraPluginView.decode(Data(json.utf8)) }
             }
