@@ -41,6 +41,7 @@ write_plist(app / 'Contents/Info.plist', dict(common, **{
     'CFBundleName': manifest['name'],
     'CFBundlePackageType': 'APPL',
     'NSPrincipalClass': 'NSApplication',
+    'LSUIElement': True,
 }))
 write_plist(extension / 'Contents/Info.plist', dict(common, **{
     'CFBundleIdentifier': manifest['extensionBundleIdentifier'],

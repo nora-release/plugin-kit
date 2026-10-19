@@ -1,7 +1,32 @@
+import AppKit
 import SwiftUI
 
 @main
-struct ContainingApp: App {
+enum ContainingApp {
+    @MainActor static func main() {
+        guard CommandLine.arguments.dropFirst().contains("--nora-register") else {
+            ContainingPreviewApp.main()
+            return
+        }
+        let application = NSApplication.shared
+        let delegate = RegistrationDelegate()
+        application.delegate = delegate
+        withExtendedLifetime(delegate) { application.run() }
+    }
+}
+
+@MainActor
+private final class RegistrationDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.prohibited)
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DispatchQueue.main.async { NSApp.terminate(nil) }
+    }
+}
+
+private struct ContainingPreviewApp: App {
     var body: some Scene {
         WindowGroup(String(localized: "Nora Native Plugin Example")) {
             VStack(alignment: .leading, spacing: 16) {

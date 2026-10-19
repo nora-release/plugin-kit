@@ -52,7 +52,7 @@ def build(config_path, destination, tag, scratch_path=None):
               'CFBundleShortVersionString': bundle_version, 'CFBundleVersion': bundle_version,
               'LSMinimumSystemVersion': minimum}
     for bundle, product, identifier, extra in (
-        (app, config['hostProduct'], manifest['id'], {'CFBundlePackageType': 'APPL', 'NSPrincipalClass': 'NSApplication'}),
+        (app, config['hostProduct'], manifest['id'], {'CFBundlePackageType': 'APPL', 'NSPrincipalClass': 'NSApplication', 'LSUIElement': True}),
         (extension, config['extensionProduct'], manifest['extensionBundleIdentifier'], {
             'CFBundlePackageType': 'XPC!', 'EXAppExtensionAttributes': {
                 'EXExtensionPointIdentifier': 'com.nora.plugin.native', 'EXExtensionPrincipalClass': config['extensionPrincipalClass']}}),
