@@ -18,12 +18,14 @@ assert.equal(runInContext('nora.features?.purpleTone === true', context), true)
 assert.equal(runInContext('nora.features?.buttonIcon === true', context), true)
 assert.equal(runInContext('nora.features?.tabBarSummary === true', context), true)
 assert.equal(runInContext('nora.features?.navigationItemIcon === true', context), true)
+assert.equal(runInContext('nora.features?.sidebarContentTransition === true', context), true)
 assert.throws(() => runInContext('"use strict"; nora.features.detailAside = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.itemRowIcon = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.purpleTone = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.buttonIcon = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.tabBarSummary = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features.navigationItemIcon = false', context))
+assert.throws(() => runInContext('"use strict"; nora.features.sidebarContentTransition = false', context))
 assert.throws(() => runInContext('"use strict"; nora.features = {}', context))
 assert.equal(runInContext('({}).features?.detailAside === true', context), false, 'Older hosts without features safely select the existing detail layout')
 assert.equal(runInContext('({features:{detailAside:true}}).features?.itemRowIcon === true', context), false, 'SDK 0.14 hosts safely retain the item row symbol fallback')
@@ -354,6 +356,44 @@ for (const kind of viewKinds) {
   assert.throws(() => runInContext('nora.ui.node(paginationKind, {loadMoreAction:"next",loadMoreToken:"2"})', context), /sidebar pagination/)
 }
 assert.equal(requests.length, paginationRequests, 'Pagination descriptors do not send requests without a native scroll event')
+const transitionRequests = requests.length
+const committedSidebar = runInContext(`nora.ui.sidebar({
+  id:'items',value:'item-42',contentTransitionKey:'reviews',loadMoreAction:'nextPage',loadMoreToken:'reviews:2',
+  children:[nora.ui.picker({id:'category',value:'reviews',options:[{value:'tasks',text:'Tasks'},{value:'reviews',text:'Reviews'}]})],
+  items:[nora.ui.navigationItem({id:'item-42',text:'Keyboard navigation',action:'selectItem'})]
+})`, context)
+assert.equal(committedSidebar.contentTransitionKey, 'reviews')
+assert.equal(committedSidebar.id, 'items')
+assert.equal(committedSidebar.value, 'item-42')
+assert.equal(committedSidebar.children[0].value, 'reviews')
+assert.equal(committedSidebar.loadMoreToken, 'reviews:2')
+assert.equal(committedSidebar.items[0].action, 'selectItem')
+context.committedSidebar = committedSidebar
+runInContext('nora.registerPanel("com.example.transition", () => committedSidebar)', context)
+assert.deepEqual(JSON.parse(JSON.stringify(await controller.invokePanel('com.example.transition'))), JSON.parse(JSON.stringify(committedSidebar)))
+assert.equal(runInContext('nora.ui.sidebar({id:"legacy"})', context).contentTransitionKey, undefined)
+assert.equal(runInContext('nora.ui.sidebar({contentTransitionKey:null})', context).contentTransitionKey, null)
+for (const key of ['x'.repeat(256), 'é'.repeat(128), '界'.repeat(85) + 'x', '😀'.repeat(64)]) {
+  assert.equal(Buffer.byteLength(key, 'utf8'), 256)
+  context.transitionKey = key
+  assert.equal(runInContext('nora.ui.sidebar({contentTransitionKey:transitionKey})', context).contentTransitionKey, key)
+}
+for (const key of ['', 42, true, [], {}, 'x'.repeat(257), 'é'.repeat(129), '界'.repeat(86), '😀'.repeat(65), '\ud800', '\udfff']) {
+  context.transitionKey = key
+  assert.throws(() => runInContext('nora.ui.sidebar({contentTransitionKey:transitionKey})', context), /sidebar content transition key/)
+}
+for (const kind of [...viewKinds, 'lazyColumn']) {
+  context.transitionKind = kind
+  assert.throws(() => runInContext('nora.ui.node(transitionKind,{contentTransitionKey:"reviews"})', context), /sidebar content transition key/)
+}
+const olderTransitionContext = createContext({ transport: () => { throw new Error('Transition descriptors must not contact the host') } })
+runInContext(`(${source.replace('sidebarContentTransition: true', 'sidebarContentTransition: false')})(transport)`, olderTransitionContext)
+assert.equal(runInContext('nora.features.sidebarContentTransition', olderTransitionContext), false)
+const gatedSidebar = runInContext(`nora.ui.sidebar({id:'items',
+  ...(nora.features?.sidebarContentTransition === true ? {contentTransitionKey:'reviews'} : {})
+})`, olderTransitionContext)
+assert.equal(Object.hasOwn(gatedSidebar, 'contentTransitionKey'), false, 'Plugins omit transition metadata on older hosts')
+assert.equal(requests.length, transitionRequests, 'Transition keys never submit actions, read resources, or contact the host')
 const glyphRequests = requests.length
 const glyphs = [
   '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><!-- Icon from Huge Icons by Hugeicons - undefined --><g fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 8v8m12 0v-4c0-2.828 0-4.243-.879-5.121C16.243 6 14.828 6 12 6h-1m0 0c0-.7 1.994-2.008 2.5-2.5M11 6c0 .7 1.994 2.008 2.5 2.5"/><circle cx="6" cy="18" r="2"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/></g></svg>',

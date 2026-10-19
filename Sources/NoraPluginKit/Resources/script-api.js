@@ -150,6 +150,10 @@ export default function createNoraPluginAPI(request, locale = 'en') {
       && (!['sidebar', 'lazyColumn'].includes(type) || !validBoundedString(properties.loadMoreAction, 256) || !validBoundedString(properties.loadMoreToken, 256))) {
       throw new Error('Nora sidebar pagination requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar or lazyColumn.')
     }
+    if (properties.contentTransitionKey != null
+      && (type !== 'sidebar' || !validBoundedString(properties.contentTransitionKey, 256))) {
+      throw new Error('Nora sidebar content transition key must be a nonempty string of at most 256 UTF-8 bytes on a sidebar.')
+    }
     if (type === 'document' && (!validBoundedString(properties.text, 2 * 1024 * 1024)
       || ['children', 'items', 'options'].some(key => properties[key] != null && (!Array.isArray(properties[key]) || properties[key].length))
       || ['action', 'value', 'placeholder', 'symbol', 'textStyle', 'tone', 'appearance', 'avatarBase64', 'iconSVG', 'fileIconPath',
@@ -180,7 +184,7 @@ export default function createNoraPluginAPI(request, locale = 'en') {
   }
   const api = {
     locale: String(locale),
-    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true, continuousContent: true, fileIcons: true, navigationItemIcon: true }),
+    features: Object.freeze({ detailAside: true, itemRowIcon: true, purpleTone: true, buttonIcon: true, tabBarSummary: true, continuousContent: true, fileIcons: true, navigationItemIcon: true, sidebarContentTransition: true }),
     ui: Object.freeze(ui),
     panels: Object.freeze({
       invalidate: panelID => Promise.resolve().then(() => {

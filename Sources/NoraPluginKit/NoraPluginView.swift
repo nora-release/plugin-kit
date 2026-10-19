@@ -12,6 +12,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public static let maximumIconSVGBytes = 16 * 1024
     public static let maximumFileIconPathBytes = 4096
     public static let maximumTextEditorValueBytes = 64 * 1024
+    public static let maximumSidebarContentTransitionKeyBytes = 256
 
     public enum Kind: String, Codable, Hashable, Sendable, CaseIterable {
         case column, row, text, button, textField, secureField, picker, list
@@ -94,6 +95,11 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
     public let loadMoreAction: String?
     /// An opaque pagination revision, at most 256 UTF-8 bytes. Change after loading each page.
     public let loadMoreToken: String?
+    /// Sidebar-only key for the last successfully committed list category, nonempty and at most 256 UTF-8 bytes.
+    /// A change from an existing key animates only incoming list content; initial and unchanged keys do not animate.
+    /// Keep it unchanged while loading and during selection, search, pagination, or metadata updates.
+    /// Native hosts respect Reduce Motion. Gate with nora.features?.sidebarContentTransition === true on SDK 0.22+.
+    public let contentTransitionKey: String?
     public let options: [Option]
     public let items: [NoraPluginView]
     public let children: [NoraPluginView]
@@ -119,7 +125,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
                 subtitle: String? = nil, symbol: String? = nil, textStyle: TextStyle? = nil,
                 tone: Tone? = nil, appearance: Appearance? = nil, avatarBase64: String? = nil,
                 loadMoreAction: String? = nil, loadMoreToken: String? = nil, iconSVG: String? = nil,
-                fileIconPath: String? = nil) {
+                fileIconPath: String? = nil, contentTransitionKey: String? = nil) {
         self.type = type
         self.id = id
         self.text = text
@@ -128,6 +134,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         self.value = value
         self.loadMoreAction = loadMoreAction
         self.loadMoreToken = loadMoreToken
+        self.contentTransitionKey = contentTransitionKey
         self.options = options
         self.items = items
         self.children = children
@@ -152,6 +159,7 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
         value = try values.decodeIfPresent(String.self, forKey: .value)
         loadMoreAction = try values.decodeIfPresent(String.self, forKey: .loadMoreAction)
         loadMoreToken = try values.decodeIfPresent(String.self, forKey: .loadMoreToken)
+        contentTransitionKey = try values.decodeIfPresent(String.self, forKey: .contentTransitionKey)
         options = try values.decodeIfPresent([Option].self, forKey: .options) ?? []
         items = try values.decodeIfPresent([Self].self, forKey: .items) ?? []
         children = try values.decodeIfPresent([Self].self, forKey: .children) ?? []
@@ -253,6 +261,12 @@ public struct NoraPluginView: Codable, Hashable, Sendable {
                   let loadMoreAction, !loadMoreAction.isEmpty, loadMoreAction.utf8.count <= 256,
                   let loadMoreToken, !loadMoreToken.isEmpty, loadMoreToken.utf8.count <= 256 else {
                 throw NoraPluginValidationError.invalid("sidebar pagination", "requires paired nonempty action and token strings of at most 256 UTF-8 bytes on a sidebar or lazyColumn")
+            }
+        }
+        if let contentTransitionKey {
+            guard type == .sidebar, !contentTransitionKey.isEmpty,
+                  contentTransitionKey.utf8.count <= Self.maximumSidebarContentTransitionKeyBytes else {
+                throw NoraPluginValidationError.invalid("sidebar content transition key", "must be a nonempty string of at most 256 UTF-8 bytes on a sidebar")
             }
         }
         if type == .workspace {

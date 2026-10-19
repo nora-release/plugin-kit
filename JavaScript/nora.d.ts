@@ -33,6 +33,8 @@ export interface NoraPluginView {
   loadMoreAction?: string
   /** Sidebar or lazyColumn opaque pagination revision. Change after each page so the host can request the next page once. */
   loadMoreToken?: string
+  /** Sidebar-only key for the last successfully committed list category, nonempty and at most 256 UTF-8 bytes. A change from an existing key animates incoming list content with a short native fade and offset, respecting Reduce Motion; initial, omitted, and unchanged keys do not animate. Keep the key while loading and during selection, search, pagination, or metadata updates, and update it only when the replacement list is committed. Gate with nora.features?.sidebarContentTransition === true on SDK 0.22+; omit this property on older hosts. It does not invoke an action or change sidebar identity or selection. */
+  contentTransitionKey?: string
   options?: { value: string; text: string }[]
   /** detail: optional single column for a separate summary aside (SDK 0.14+). Its tree accepts column/row/text/button/picker/menu/divider/spacer/badge/progress/emptyState/markdown/itemRow, and no nested items. The host controls the aside width, scrolling, and compact placement. Existing detail children keep their original order. tabBar: optional single row of static trailing metadata (SDK 0.18+), accepting row/column/text/badge/progress/spacer/divider, without actions, input controls, nested layouts, items, or options anywhere in its tree. The host controls placement and available width. Gate it with nora.features?.tabBarSummary === true; omit items on older hosts. splitView/itemRow/timelineItem never accept items. */
   items?: NoraPluginView[]
@@ -96,7 +98,7 @@ export type NoraPluginUI = Record<Exclude<NoraPluginViewKind, 'diff' | 'timeline
 export interface NoraPluginAPI {
   readonly locale: string
   /** Optional layout capabilities supplied by this SDK's matching native host. Older hosts may omit features. */
-  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean; tabBarSummary: boolean; continuousContent: boolean; fileIcons: boolean; navigationItemIcon: boolean }>
+  readonly features: Readonly<{ detailAside: boolean; itemRowIcon: boolean; purpleTone: boolean; buttonIcon: boolean; tabBarSummary: boolean; continuousContent: boolean; fileIcons: boolean; navigationItemIcon: boolean; sidebarContentTransition: boolean }>
   registerPanel(id: string, handler: (event: NoraPluginPanelEvent) => NoraPluginView | Promise<NoraPluginView>): void
   registerCommand(id: string, handler: (arguments_: Record<string, unknown>) => unknown | Promise<unknown>): void
   ui: NoraPluginUI
