@@ -16,7 +16,10 @@ final class NativePlugin: NSObject, AppExtension {
         let model = self.model
         let service = NoraPluginService(
             handler: { [model] request, host in try await model.invoke(request, host: host) },
-            onConnect: { [model] host in Task { @MainActor in model.host = host } }
+            onConnect: { [model] host, context in
+                guard context.panelID == "com.nora.example.native.panel" else { return }
+                Task { @MainActor in model.host = host }
+            }
         )
         return AppExtensionSceneConfiguration(
             PrimitiveAppExtensionScene(id: "com.nora.example.native.panel", content: { [model] in

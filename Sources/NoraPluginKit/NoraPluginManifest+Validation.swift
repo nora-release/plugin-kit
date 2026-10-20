@@ -12,33 +12,23 @@ public enum NoraPluginValidationError: Error, LocalizedError, Equatable, Sendabl
 
 extension NoraPluginManifest {
     public func validate() throws {
-        guard apiVersion == 1,
-              (schemaVersion == 1 && runtime == .nativeExtension) || (schemaVersion == 2 && runtime == .script) else {
-            throw NoraPluginValidationError.invalid("version", "requires native schemaVersion 1 or script schemaVersion 2 with apiVersion 1")
+        guard apiVersion == 1, schemaVersion == 1 else {
+            throw NoraPluginValidationError.invalid("version", "requires schemaVersion 1 and apiVersion 1")
         }
         try Self.identifier(id, field: "id")
         if let iconPath {
             try Self.relativeResourcePath(iconPath, field: "iconPath")
+            guard !iconPath.lowercased().hasPrefix("contents/resources/") else {
+                throw NoraPluginValidationError.invalid("iconPath", "must be relative to Contents/Resources")
+            }
             guard ["svg", "png", "jpg", "jpeg"].contains((iconPath as NSString).pathExtension) else {
                 throw NoraPluginValidationError.invalid("iconPath", "must name an SVG, PNG, or JPEG file inside the plugin")
             }
         }
-        if isScript {
-            guard extensionBundleIdentifier.isEmpty else {
-                throw NoraPluginValidationError.invalid("extensionBundleIdentifier", "script plugins do not contain native extensions")
-            }
-            guard let entryPoint else { throw NoraPluginValidationError.invalid("entryPoint", "is required for script plugins") }
-            try Self.scriptEntryPoint(entryPoint)
-            try Self.networkHosts(networkDomains)
-            guard networkDomains.isEmpty || permissions.contains(.network) else {
-                throw NoraPluginValidationError.invalid("networkDomains", "requires the network permission")
-            }
-        } else {
-            try Self.identifier(extensionBundleIdentifier, field: "extensionBundleIdentifier")
-            guard entryPoint == nil, networkDomains.isEmpty,
-                  permissions.allSatisfy({ [.hostInfo, .notifications].contains($0) }) else {
-                throw NoraPluginValidationError.invalid("runtime", "script capabilities require a script plugin")
-            }
+        try Self.identifier(extensionBundleIdentifier, field: "extensionBundleIdentifier")
+        try Self.networkHosts(networkDomains)
+        guard networkDomains.isEmpty || permissions.contains(.network) else {
+            throw NoraPluginValidationError.invalid("networkDomains", "requires the network permission")
         }
         try Self.text(name, field: "name", maximum: 128)
         try Self.text(publisher, field: "publisher", maximum: 128)
@@ -72,13 +62,6 @@ extension NoraPluginManifest {
         }
         guard try JSONEncoder().encode(self).count <= Self.maximumManifestBytes else {
             throw NoraPluginValidationError.invalid("manifest", "exceeds 512 KiB")
-        }
-    }
-
-    private static func scriptEntryPoint(_ value: String) throws {
-        try relativeResourcePath(value, field: "entryPoint")
-        guard value.hasSuffix(".js") else {
-            throw NoraPluginValidationError.invalid("entryPoint", "must be a relative JavaScript file path inside the plugin")
         }
     }
 

@@ -4,13 +4,15 @@ import Testing
 
 @Suite("Native plugin XPC service")
 struct NoraPluginServiceTests {
-    @Test("Commands can request host info and SDK handshakes bypass the plugin handler", arguments: ["commands.execute", "plugin.handshake"])
-    func bidirectionalConnection(method: String) async throws {
-        let service = NoraPluginService { request, host in
-            #expect(request.method != "plugin.handshake", "The SDK must handle the handshake without invoking plugin code.")
-            guard request.method == "commands.execute" else { return NoraPluginResponse(error: "Unknown method") }
-            return try await host.request(NoraPluginRequest(method: "host.info"))
-        }
+    @Test("Host callbacks begin once after readiness and preserve their native channel context",
+          arguments: [NoraPluginConnectionContext(), NoraPluginConnectionContext(panelID: "com.example.native.panel")])
+    func bidirectionalConnection(context: NoraPluginConnectionContext) async throws {
+        let connected = ConnectionRecorder()
+        let service = NoraPluginService(handler: { request, host in
+            #expect(request.method == "commands.execute", "The SDK must handle connection negotiation itself.")
+            let info = try await host.request(method: "host.info", parameters: [String: String](), as: HostInfo.self)
+            return try NoraPluginResponse(result: info)
+        }, onConnect: { _, context in connected.record(context) })
         let delegate = ListenerDelegate(service: service)
         let listener = NSXPCListener.anonymous()
         listener.delegate = delegate
@@ -25,21 +27,42 @@ struct NoraPluginServiceTests {
             listener.invalidate()
             withExtendedLifetime(delegate) {}
         }
+        #expect(connected.contexts.isEmpty)
+        let handshake = try await invoke(connection, request: NoraPluginRequest(method: "plugin.handshake"))
+        #expect(handshake.resultJSON == #"{"apiVersion":1}"#)
+        #expect(connected.contexts.isEmpty)
+        let premature = try await invoke(connection, request: NoraPluginRequest(method: "commands.execute"))
+        #expect(premature.error != nil)
+        #expect(connected.contexts.isEmpty)
+        let ready = try NoraPluginRequest(method: NoraPluginService.readyMethod, parameters: context)
+        let acknowledgement = try await invoke(connection, request: ready)
+        #expect(try acknowledgement.result(as: Bool.self))
+        #expect(connected.contexts == [context])
+        _ = try await invoke(connection, request: ready)
+        #expect(connected.contexts == [context])
+        let response = try await invoke(connection, request: NoraPluginRequest(method: "commands.execute"))
+        #expect(response.resultJSON == #"{"name":"Nora"}"#)
+        let replacement = NoraPluginConnectionContext(panelID: "com.other.native.panel")
+        let changed = try await invoke(connection, request: NoraPluginRequest(method: NoraPluginService.readyMethod, parameters: replacement))
+        #expect(changed.error != nil)
+        #expect(connected.contexts == [context])
+    }
+
+    private func invoke(_ connection: NSXPCConnection, request: NoraPluginRequest) async throws -> NoraPluginResponse {
         let reply = NoraPluginPendingReply()
         let timeout = Task {
             try? await Task.sleep(for: .seconds(5))
             reply.finish(.failure(NoraPluginConnectionError.timedOut))
         }
         defer { timeout.cancel() }
-        let data = try NoraPluginWire.encode(NoraPluginRequest(method: method))
+        let data = try NoraPluginWire.encode(request)
         let responseData = try await withCheckedThrowingContinuation { continuation in
             guard reply.install(continuation) else { return }
             let proxy = connection.remoteObjectProxyWithErrorHandler { reply.finish(.failure($0)) } as? any NoraPluginExtensionXPC
             guard let proxy else { reply.finish(.failure(NoraPluginConnectionError.unavailable)); return }
             proxy.invoke(data) { reply.finish(.success($0)) }
         }
-        let expected = method == "plugin.handshake" ? #"{"apiVersion":1}"# : #"{"name":"Nora"}"#
-        #expect(try NoraPluginWire.decodeResponse(responseData).resultJSON == expected)
+        return try NoraPluginWire.decodeResponse(responseData)
     }
 }
 
@@ -63,4 +86,15 @@ private final class Host: NSObject, NoraPluginHostXPC, Sendable {
             reply(Data(#"{"error":"Invalid request"}"#.utf8))
         }
     }
+}
+
+private struct HostInfo: Codable, Sendable {
+    let name: String
+}
+
+private final class ConnectionRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [NoraPluginConnectionContext] = []
+    var contexts: [NoraPluginConnectionContext] { lock.withLock { recorded } }
+    func record(_ context: NoraPluginConnectionContext) { lock.withLock { recorded.append(context) } }
 }

@@ -15,7 +15,7 @@ RUN = subprocess.run
 
 
 def scaffold(directory):
-    RUN(['node', str(ROOT / 'scripts/plugin-marketplace.ts'), 'init-native-author',
+    RUN(['node', str(ROOT / 'scripts/plugin-marketplace.ts'), 'init-author',
          '--directory', str(directory), '--sdk-path', str(ROOT)],
         check=True, capture_output=True, text=True, timeout=30)
 

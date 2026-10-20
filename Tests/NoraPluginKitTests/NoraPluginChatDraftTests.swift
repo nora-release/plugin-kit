@@ -22,15 +22,12 @@ struct NoraPluginChatDraftTests {
         #expect(draft.sourceURL == nil)
     }
 
-    @Test("The chat permission is available to script plugins and does not change native permissions")
-    func permission() throws {
-        let script = NoraPluginManifest(schemaVersion: 2, id: "com.example.chat", name: "Chat", version: "1.0.0",
-                                        summary: "Draft handoff", publisher: "Example", permissions: [.chat], runtime: .script, entryPoint: "plugin.js")
-        #expect(try NoraPluginManifest.decode(JSONEncoder().encode(script)) == script)
-        #expect(NoraPluginPermission.chat.rawValue == "chat")
-        let native = NoraPluginManifest(id: "com.example.chat", name: "Chat", version: "1.0.0", summary: "Draft handoff",
-                                        publisher: "Example", extensionBundleIdentifier: "com.example.chat.extension", permissions: [.chat])
-        #expect(throws: NoraPluginValidationError.self) { try native.validate() }
+    @Test("Native plugins can request chat draft access")
+    func nativePermission() throws {
+        let manifest = NoraPluginManifest(id: "com.example.chat", name: "Chat", version: "1.0.0",
+                                          summary: "Draft handoff", publisher: "Example",
+                                          extensionBundleIdentifier: "com.example.chat.extension", permissions: [.chat])
+        #expect(try NoraPluginManifest.decode(JSONEncoder().encode(manifest)) == manifest)
     }
 
     @Test("Draft field limits count UTF-8 bytes rather than characters")

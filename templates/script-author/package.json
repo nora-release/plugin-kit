@@ -1,9 +1,0 @@
-{
-  "name": "nora-plugin",
-  "private": true,
-  "type": "module",
-  "engines": {"node": ">=24"},
-  "devDependencies": {
-    "@nora/plugin-kit": "github:nora-release/plugin-kit#v0.5.1"
-  }
-}

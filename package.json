@@ -1,15 +1,21 @@
 {
   "name": "@nora/plugin-kit",
-  "version": "0.22.1",
+  "version": "0.23.0",
   "private": true,
   "type": "module",
-  "types": "JavaScript/nora.d.ts",
-  "files": ["Sources", "JavaScript", "scripts", "templates", "Examples", "Tests", "Makefile", "Package.swift", "sdk-version.json", "nora-plugin.schema.json", "LICENSE"],
+  "files": [
+    "Sources",
+    "scripts",
+    "templates",
+    "Examples",
+    "Tests",
+    "Makefile",
+    "Package.swift",
+    "sdk-version.json",
+    "nora-plugin.schema.json",
+    "LICENSE"
+  ],
   "exports": {
-    ".": {
-      "types": "./JavaScript/nora.d.ts",
-      "default": "./Sources/NoraPluginKit/Resources/script-api.js"
-    },
     "./tools": "./scripts/plugin-marketplace.mjs"
   },
   "bin": {

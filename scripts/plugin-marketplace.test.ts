@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -59,21 +59,18 @@ assert.throws(() => validateManifest({ ...manifest, commands: [{ ...manifest.com
 assert.throws(() => validateManifest({ ...manifest, panels: [{ ...manifest.panels[0], id: 'com.other.panel' }] }))
 assert.throws(() => validateManifest({ ...manifest, commands: [{ ...manifest.commands[0], inputSchemaJSON: '{"type":"array"}' }] }))
 assert.deepEqual(validateEntry(entry), entry)
-const { extensionBundleIdentifier: _nativeExtension, ...scriptBase } = manifest
-const scriptManifest: PluginManifest = { ...scriptBase, schemaVersion: 2, runtime: 'script', entryPoint: 'plugin.js',
-  networkDomains: ['api.github.com', 'github.com'], permissions: ['network', 'credentials', 'openExternal'] }
-validateManifest(scriptManifest)
-assert.deepEqual(validateManifest({ ...scriptManifest, permissions: ['chat'], networkDomains: [] }).permissions, ['chat'])
-assert.deepEqual(validateManifest({ ...scriptManifest, permissions: ['hostInfo', 'notifications', 'network', 'credentials', 'openExternal', 'chat'] }).permissions,
-  ['hostInfo', 'notifications', 'network', 'credentials', 'openExternal', 'chat'])
-assert.throws(() => validateManifest({ ...manifest, permissions: ['chat'] }))
-assert.throws(() => validateManifest({ ...scriptManifest, permissions: ['chat', 'chat'], networkDomains: [] }))
+const networkManifest: PluginManifest = { ...manifest, networkDomains: ['api.github.com', 'github.com'],
+  permissions: ['hostInfo', 'notifications', 'network', 'credentials', 'openExternal', 'chat'] }
+assert.deepEqual(validateManifest(networkManifest), networkManifest)
+assert.throws(() => validateManifest({ ...manifest, permissions: ['chat', 'chat'] }))
+for (const patch of [{ runtime: 'script' }, { runtime: 'nativeExtension' }, { runtime: null }, { entryPoint: 'plugin.js' }, { entryPoint: null }, { schemaVersion: 2 }]) {
+  assert.throws(() => validateManifest({ ...manifest, ...patch }))
+}
 for (const iconPath of ['assets/brand.svg', 'brand.png', 'images/brand.jpg', 'images/brand.jpeg']) {
-  assert.equal(validateManifest({ ...scriptManifest, iconPath }).iconPath, iconPath)
   assert.equal(validateManifest({ ...manifest, iconPath }).iconPath, iconPath)
 }
-for (const iconPath of ['', '../brand.svg', '/brand.svg', 'a/../brand.svg', 'a/./brand.svg', 'a//brand.svg', 'a\\brand.svg', 'brand.svg\n', 'brand.js', 'brand.SVG', 'a/'.repeat(513) + 'brand.svg', null]) {
-  assert.throws(() => validateManifest({ ...scriptManifest, iconPath }))
+for (const iconPath of ['', '../brand.svg', '/brand.svg', 'a/../brand.svg', 'a/./brand.svg', 'a//brand.svg', 'a\\brand.svg', 'brand.svg\n', 'brand.js', 'brand.SVG', 'Contents/Resources/brand.svg', 'contents/resources/brand.svg', 'a/'.repeat(513) + 'brand.svg', null]) {
+  assert.throws(() => validateManifest({ ...manifest, iconPath }))
 }
 const iconSVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>')
 validateIconData(iconSVG, 'assets/brand.svg')
@@ -86,45 +83,20 @@ for (const icon of [
 ]) assert.throws(() => validateIconData(Buffer.from(icon), 'brand.svg'))
 assert.throws(() => validateIconData(Buffer.alloc(maximumIconBytes + 1), 'brand.png'))
 assert.throws(() => validateIconData(Buffer.from('not PNG'), 'brand.png'))
-for (const entryPoint of ['../plugin.js', '/plugin.js', 'a//plugin.js', 'a\\plugin.js', 'plugin.swift']) {
-  assert.throws(() => validateManifest({ ...scriptManifest, entryPoint }))
-}
 for (const networkDomains of [['*.github.com'], ['https://github.com'], ['GitHub.com'], ['github.com:443'], ['github.com\n'], ['github.com', 'github.com']]) {
-  assert.throws(() => validateManifest({ ...scriptManifest, networkDomains }))
+  assert.throws(() => validateManifest({ ...networkManifest, networkDomains }))
 }
-assert.throws(() => validateManifest({ ...scriptManifest, permissions: [] }))
-assert.throws(() => validateManifest({ ...scriptManifest, schemaVersion: 1 }))
-assert.throws(() => validateManifest({ ...scriptManifest, extensionBundleIdentifier: manifest.extensionBundleIdentifier }))
-const scriptArchive = zip([
-  { name: 'TestPlugin/nora-plugin.json', data: Buffer.from(JSON.stringify(scriptManifest)) },
-  { name: 'TestPlugin/plugin.js', data: Buffer.from('nora.registerCommand("example", () => true)') },
-])
-const { teamIdentifier: _nativeTeam, ...scriptEntryBase } = entry
-const scriptEntry: RegistryEntry = { ...scriptEntryBase, manifest: scriptManifest,
-  sha256: createHash('sha256').update(scriptArchive).digest('hex') }
-assert.deepEqual(validateEntry(scriptEntry), scriptEntry)
-verifyArchive(scriptEntry, scriptArchive)
-assert.deepEqual(manifestFromArchive(scriptArchive), scriptManifest)
-const iconManifest: PluginManifest = { ...scriptManifest, iconPath: 'assets/brand.svg' }
-const iconFiles = [
-  { name: 'TestPlugin/nora-plugin.json', data: Buffer.from(JSON.stringify(iconManifest)) },
-  { name: 'TestPlugin/plugin.js', data: Buffer.from('code') },
-]
-assert.deepEqual(manifestFromArchive(zip([...iconFiles, { name: 'TestPlugin/assets/brand.svg', data: iconSVG }])), iconManifest)
+assert.throws(() => validateManifest({ ...networkManifest, permissions: [] }))
+const nativeIconManifest: PluginManifest = { ...manifest, iconPath: 'brand.svg' }
+const iconFiles = [{ name: 'Test.app/Contents/Resources/nora-plugin.json', data: Buffer.from(JSON.stringify(nativeIconManifest)) }]
+assert.deepEqual(manifestFromArchive(zip([...iconFiles, { name: 'Test.app/Contents/Resources/brand.svg', data: iconSVG }])), nativeIconManifest)
 for (const icon of [undefined, { data: iconSVG, mode: 0o120777 }, { data: Buffer.alloc(maximumIconBytes + 1) }, { data: Buffer.from('<svg><script/></svg>') }]) {
-  assert.throws(() => manifestFromArchive(zip(icon ? [...iconFiles, { name: 'TestPlugin/assets/brand.svg', ...icon }] : iconFiles)))
+  assert.throws(() => manifestFromArchive(zip(icon ? [...iconFiles, { name: 'Test.app/Contents/Resources/brand.svg', ...icon }] : iconFiles)))
 }
-const nativeIconManifest: PluginManifest = { ...manifest, iconPath: 'Contents/Resources/brand.svg' }
-assert.deepEqual(manifestFromArchive(zip([
-  { name: 'Test.app/Contents/Resources/nora-plugin.json', data: Buffer.from(JSON.stringify(nativeIconManifest)) },
-  { name: 'Test.app/Contents/Resources/brand.svg', data: iconSVG },
-])), nativeIconManifest)
-for (const files of [
-  [{ name: 'TestPlugin/nora-plugin.json', data: Buffer.from(JSON.stringify(scriptManifest)) }],
-  [{ name: 'Test.app/nora-plugin.json', data: Buffer.from(JSON.stringify(scriptManifest)) }, { name: 'Test.app/plugin.js', data: Buffer.from('code') }],
-  [{ name: 'TestPlugin/nora-plugin.json', data: Buffer.from(JSON.stringify(scriptManifest)) }, { name: 'TestPlugin/plugin.js', data: Buffer.from('other.js'), mode: 0o120777 }],
-  [{ name: 'TestPlugin/nora-plugin.json', data: Buffer.from(JSON.stringify(scriptManifest)) }, { name: 'TestPlugin/plugin.js', data: Buffer.alloc(2 * 1024 * 1024 + 1) }],
-]) assert.throws(() => manifestFromArchive(zip(files)))
+for (const name of ['TestPlugin/nora-plugin.json', 'Test.app/nora-plugin.json', 'TestPlugin/Contents/Resources/nora-plugin.json']) {
+  assert.throws(() => manifestFromArchive(zip([{ name, data: Buffer.from(JSON.stringify(manifest)) }])))
+}
+assert.throws(() => validateEntry({ ...entry, teamIdentifier: undefined }))
 assert.equal(validateEntry({ ...entry, releaseTag: '1.2.3', downloadURL: entry.downloadURL.replace('/v1.2.3/', '/1.2.3/') }).releaseTag, '1.2.3')
 for (const patch of [
   { releaseTag: 'latest' }, { teamIdentifier: '-' }, { sha256: '0'.repeat(64) },
@@ -202,54 +174,10 @@ try {
   assert.deepEqual(release.plugins, [entry])
   assert.equal(await readFile(join(output, 'SHA256SUMS'), 'utf8'), `${entry.sha256}  plugin.zip\n`)
   assert.notEqual(run('release-entry', '--manifest', manifestPath, '--archive', archivePath, '--repository', entry.repositoryURL, '--tag', entry.releaseTag, '--team', entry.teamIdentifier, '--output', output).status, 0)
-  const scriptAuthor = join(temporary, 'script-author')
-  result = run('init-author', '--directory', scriptAuthor)
+  result = run('init-author', '--directory', join(temporary, 'author'))
   assert.equal(result.status, 0, result.stderr)
-  const scriptPublishing = await readFile(join(scriptAuthor, '.github/workflows/release-plugin.yml'), 'utf8')
-  assert.doesNotMatch(scriptPublishing, /secrets\.|codesign|notarytool|xcodebuild|DEVELOPER_ID|APPLE_TEAM|--team/)
-  assert.match(scriptPublishing, /ubuntu-latest/)
-  const scriptPackagePath = join(scriptAuthor, 'package.json')
-  const scriptPackage = JSON.parse(await readFile(scriptPackagePath, 'utf8'))
-  assert.equal(scriptPackage.devDependencies['@nora/plugin-kit'], 'github:nora-release/plugin-kit#v0.5.1')
-  assert.match(scriptPublishing, /npm install --ignore-scripts/)
-  assert.match(scriptPublishing, /node_modules\/@nora\/plugin-kit\/scripts\/plugin-marketplace\.mjs/)
-  for (const copiedSDKPath of ['scripts/plugin-marketplace.ts', 'scripts/build-script-plugin.py', 'nora.d.ts', 'Package.swift']) {
-    await assert.rejects(() => access(join(scriptAuthor, copiedSDKPath)))
-  }
-  assert.notEqual(run('init-author', '--directory', scriptAuthor).status, 0)
-  const packedSDKDirectory = join(temporary, 'packed-sdk')
-  await mkdir(packedSDKDirectory)
-  const packedSDK = spawnSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', packedSDKDirectory], { cwd: sdkRoot, encoding: 'utf8' })
-  assert.equal(packedSDK.status, 0, packedSDK.stderr)
-  const sdkArchive = join(packedSDKDirectory, JSON.parse(packedSDK.stdout)[0].filename)
-  scriptPackage.devDependencies['@nora/plugin-kit'] = `file:${sdkArchive}`
-  await writeFile(scriptPackagePath, JSON.stringify(scriptPackage))
-  const installedSDK = spawnSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'], { cwd: scriptAuthor, encoding: 'utf8' })
-  assert.equal(installedSDK.status, 0, installedSDK.stderr)
-  const installedTool = join(scriptAuthor, 'node_modules/@nora/plugin-kit/scripts/plugin-marketplace.mjs')
-  const installedGeneratedAuthor = spawnSync(process.execPath, [installedTool, 'init-author', '--directory', join(temporary, 'installed-author')], { encoding: 'utf8' })
-  assert.equal(installedGeneratedAuthor.status, 0, installedGeneratedAuthor.stderr)
-  const authorManifestPath = join(scriptAuthor, 'nora-plugin.json')
-  const authorManifest = JSON.parse(await readFile(authorManifestPath, 'utf8'))
-  authorManifest.iconPath = 'assets/brand.svg'
-  await writeFile(authorManifestPath, JSON.stringify(authorManifest))
-  await mkdir(join(scriptAuthor, 'assets'))
-  await writeFile(join(scriptAuthor, 'assets/brand.svg'), iconSVG)
-  const packaged = spawnSync('make', ['package'], { cwd: scriptAuthor, encoding: 'utf8' })
-  assert.equal(packaged.status, 0, packaged.stderr)
-  result = run('validate-manifest', '--manifest', join(scriptAuthor, 'nora-plugin.json'))
-  assert.equal(result.status, 0, result.stderr)
-  const builtScriptArchive = join(scriptAuthor, 'dist/com.example.nora.hello-0.1.0.zip')
-  result = spawnSync(process.execPath, [installedTool, 'release-entry', '--manifest', join(scriptAuthor, 'nora-plugin.json'), '--archive', builtScriptArchive,
-    '--repository', entry.repositoryURL, '--tag', 'v0.1.0', '--output', join(scriptAuthor, 'dist')], { encoding: 'utf8' })
-  assert.equal(result.status, 0, result.stderr)
-  const scriptRelease = validateRegistry(JSON.parse(await readFile(join(scriptAuthor, 'dist/marketplace.json'), 'utf8')))
-  assert.equal(scriptRelease.plugins[0].manifest.runtime, 'script')
-  assert.equal(scriptRelease.plugins[0].manifest.iconPath, 'assets/brand.svg')
-  assert.equal('teamIdentifier' in scriptRelease.plugins[0], false)
-  verifyArchive(scriptRelease.plugins[0], await readFile(builtScriptArchive))
-  result = run('init-native-author', '--directory', join(temporary, 'author'))
-  assert.equal(result.status, 0, result.stderr)
+  assert.notEqual(run('init-author', '--directory', join(temporary, 'author')).status, 0)
+  assert.notEqual(run('init-script-author', '--directory', join(temporary, 'rejected-script')).status, 0)
   const authorPackage = await readFile(join(temporary, 'author/Package.swift'), 'utf8')
   assert.match(authorPackage, /https:\/\/github.com\/nora-release\/plugin-kit\.git/)
   const sdkVersion = JSON.parse(await readFile(resolve(scriptDirectory, '../sdk-version.json'), 'utf8')).version
@@ -262,21 +190,21 @@ try {
   assert.match(publishing, /contents: read/)
   assert.match(publishing, /--verify-tag/)
   assert.match(publishing, /--draft=false --latest/)
-  result = run('init-native-author', '--directory', join(temporary, 'local-author'), '--sdk-path', sdkRoot)
+  result = run('init-author', '--directory', join(temporary, 'local-author'), '--sdk-path', sdkRoot)
   assert.equal(result.status, 0, result.stderr)
   assert.match(await readFile(join(temporary, 'local-author/Package.swift'), 'utf8'), /\.package\(name: "plugin-kit", path:/)
-  assert.notEqual(run('init-native-author', '--directory', join(temporary, 'conflicting-author'), '--sdk-path', sdkRoot, '--sdk-version', '1.0.0').status, 0)
-  result = run('init-native-author', '--directory', join(temporary, 'custom-author'), '--sdk-url', 'https://github.com/example/sdk.git', '--sdk-version', '1.2.3')
+  assert.notEqual(run('init-author', '--directory', join(temporary, 'conflicting-author'), '--sdk-path', sdkRoot, '--sdk-version', '1.0.0').status, 0)
+  result = run('init-author', '--directory', join(temporary, 'custom-author'), '--sdk-url', 'https://github.com/example/sdk.git', '--sdk-version', '1.2.3')
   assert.equal(result.status, 0, result.stderr)
   assert.match(await readFile(join(temporary, 'custom-author/Package.swift'), 'utf8'), /url: "https:\/\/github.com\/example\/sdk\.git", exact: "1\.2\.3"/)
   assert.match(await readFile(join(temporary, 'custom-author/Package.swift'), 'utf8'), /package: "sdk"/)
   const independentSDK = join(temporary, 'independent-sdk')
   await mkdir(independentSDK)
-  for (const path of ['scripts', 'templates', 'Examples', 'JavaScript', 'Package.swift', 'package.json', 'LICENSE', 'sdk-version.json']) {
+  for (const path of ['scripts', 'templates', 'Examples', 'Package.swift', 'package.json', 'LICENSE', 'sdk-version.json']) {
     await cp(join(sdkRoot, path), join(independentSDK, path), { recursive: true })
   }
   const copiedTool = join(independentSDK, 'scripts/plugin-marketplace.ts')
-  for (const kind of ['registry', 'author', 'script-author', 'native-author']) {
+  for (const kind of ['registry', 'author']) {
     result = spawnSync(process.execPath, [copiedTool, `init-${kind}`, '--directory', join(temporary, `independent-${kind}`)], { cwd: temporary, encoding: 'utf8' })
     assert.equal(result.status, 0, `Independent SDK init-${kind}: ${result.stderr}`)
   }

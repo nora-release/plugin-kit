@@ -3,10 +3,8 @@ import Foundation
 public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
     public static let extensionPointIdentifier = "com.nora.plugin.native"
     public static let relativeManifestPath = "Contents/Resources/nora-plugin.json"
-    public static let relativeScriptManifestPath = "nora-plugin.json"
     public static let maximumManifestBytes = 512 * 1024
     public static let maximumSchemaBytes = 64 * 1024
-    public static let maximumScriptBytes = 2 * 1024 * 1024
     public static let maximumIconBytes = 512 * 1024
 
     public let schemaVersion: Int
@@ -20,17 +18,13 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
     public let panels: [NoraPluginPanel]
     public let commands: [NoraPluginCommand]
     public let apiVersion: Int
-    public let runtime: NoraPluginRuntimeKind
-    public let entryPoint: String?
     public let networkDomains: [String]
     public let iconPath: String?
-    public var isScript: Bool { runtime == .script }
 
     public init(schemaVersion: Int = 1, id: String, name: String, version: String, summary: String,
-                publisher: String, extensionBundleIdentifier: String = "",
+                publisher: String, extensionBundleIdentifier: String,
                 permissions: [NoraPluginPermission] = [], panels: [NoraPluginPanel] = [],
                 commands: [NoraPluginCommand] = [], apiVersion: Int = 1,
-                runtime: NoraPluginRuntimeKind = .nativeExtension, entryPoint: String? = nil,
                 networkDomains: [String] = [], iconPath: String? = nil) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -43,13 +37,15 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
         self.panels = panels
         self.commands = commands
         self.apiVersion = apiVersion
-        self.runtime = runtime
-        self.entryPoint = entryPoint
         self.networkDomains = networkDomains
         self.iconPath = iconPath
     }
 
     public init(from decoder: any Decoder) throws {
+        let fields = try decoder.container(keyedBy: ManifestField.self)
+        if let field = fields.allKeys.first(where: { ["runtime", "entryPoint"].contains($0.stringValue) }) {
+            throw NoraPluginValidationError.invalid(field.stringValue, "is not supported by native plugins")
+        }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try values.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         id = try values.decode(String.self, forKey: .id)
@@ -57,13 +53,11 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
         version = try values.decode(String.self, forKey: .version)
         summary = try values.decode(String.self, forKey: .summary)
         publisher = try values.decode(String.self, forKey: .publisher)
-        extensionBundleIdentifier = try values.decodeIfPresent(String.self, forKey: .extensionBundleIdentifier) ?? ""
+        extensionBundleIdentifier = try values.decode(String.self, forKey: .extensionBundleIdentifier)
         permissions = try values.decodeIfPresent([NoraPluginPermission].self, forKey: .permissions) ?? []
         panels = try values.decodeIfPresent([NoraPluginPanel].self, forKey: .panels) ?? []
         commands = try values.decodeIfPresent([NoraPluginCommand].self, forKey: .commands) ?? []
         apiVersion = try values.decodeIfPresent(Int.self, forKey: .apiVersion) ?? 1
-        runtime = try values.decodeIfPresent(NoraPluginRuntimeKind.self, forKey: .runtime) ?? .nativeExtension
-        entryPoint = try values.decodeIfPresent(String.self, forKey: .entryPoint)
         networkDomains = try values.decodeIfPresent([String].self, forKey: .networkDomains) ?? []
         iconPath = try values.decodeIfPresent(String.self, forKey: .iconPath)
     }
@@ -78,9 +72,11 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-public enum NoraPluginRuntimeKind: String, Codable, Hashable, Sendable {
-    case nativeExtension
-    case script
+private struct ManifestField: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
 }
 
 public enum NoraPluginPermission: String, Codable, Hashable, Sendable, CaseIterable {

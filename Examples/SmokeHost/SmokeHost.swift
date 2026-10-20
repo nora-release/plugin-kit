@@ -114,7 +114,7 @@ private final class SmokeDelegate: NSObject, NSApplicationDelegate, EXHostViewCo
             do {
                 let connection = try viewController.makeXPCConnection()
                 configure(connection)
-                try await verifyHandshake(connection)
+                try await verifyHandshake(connection, panelID: "com.nora.example.native.panel")
                 viewController.view.isHidden = false
                 let response = try await invokeEcho(connection, text: "scene-native-success")
                 guard response.resultJSON == #"{"text":"scene-native-success"}"# else {
@@ -159,12 +159,15 @@ private final class SmokeDelegate: NSObject, NSApplicationDelegate, EXHostViewCo
         return try await invoke(connection, request: request)
     }
 
-    private func verifyHandshake(_ connection: NSXPCConnection) async throws {
+    private func verifyHandshake(_ connection: NSXPCConnection, panelID: String? = nil) async throws {
         let response = try await invoke(connection, request: NoraPluginRequest(method: "plugin.handshake"))
         guard response.resultJSON == #"{"apiVersion":1}"# else { throw SmokeError("Invalid SDK handshake") }
         record("PASS SDK handshake")
         let extensionURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Extensions/NativePlugin.appex")
         record(try SmokeSignature.verify(processIdentifier: connection.processIdentifier, extensionURL: extensionURL))
+        let ready = try NoraPluginRequest(method: NoraPluginService.readyMethod, parameters: NoraPluginConnectionContext(panelID: panelID))
+        guard try await invoke(connection, request: ready).result(as: Bool.self) else { throw SmokeError("Native connection not ready") }
+        record("PASS authenticated SDK readiness")
     }
 
     private func verifyHostInfo(_ connection: NSXPCConnection) async throws {

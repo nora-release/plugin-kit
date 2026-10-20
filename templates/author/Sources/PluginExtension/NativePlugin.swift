@@ -15,12 +15,11 @@ final class NativePlugin: NSObject, AppExtension {
             guard request.method == "commands.execute" else {
                 return NoraPluginResponse(error: "Unsupported method")
             }
-            let command = try JSONDecoder().decode(EchoCommand.self, from: Data(request.parametersJSON.utf8))
+            let command = try request.parameters(as: EchoCommand.self)
             guard command.commandID == "com.example.nora.hello.echo" else {
                 return NoraPluginResponse(error: "Unknown command")
             }
-            let result = try JSONEncoder().encode(["text": command.arguments.text])
-            return NoraPluginResponse(resultJSON: String(decoding: result, as: UTF8.self))
+            return try NoraPluginResponse(result: ["text": command.arguments.text])
         }
         return AppExtensionSceneConfiguration(
             PrimitiveAppExtensionScene(

@@ -4,24 +4,21 @@ import Testing
 
 @Suite("Plugin brand icons")
 struct NoraPluginIconTests {
-    @Test("Brand icons are optional for existing native and script manifests")
-    func compatibility() throws {
-        let native = manifest(iconPath: nil, script: false)
+    @Test("Brand icons are optional in native manifests")
+    func optionalIcon() throws {
+        let native = manifest(iconPath: nil)
         #expect(native.iconPath == nil)
         #expect(try NoraPluginManifest.decode(JSONEncoder().encode(native)) == native)
-        let script = manifest(iconPath: "assets/brand.svg")
-        #expect(try NoraPluginManifest.decode(JSONEncoder().encode(script)) == script)
     }
 
-    @Test("Icons use safe relative image paths", arguments: ["", "../brand.svg", "/brand.svg", "a/../brand.svg", "a/./brand.svg", "a//brand.svg", "a\\brand.svg", "brand.svg\n", "brand.js", "brand.SVG", String(repeating: "a/", count: 513) + "brand.svg"])
+    @Test("Icons use safe relative image paths", arguments: ["", "../brand.svg", "/brand.svg", "a/../brand.svg", "a/./brand.svg", "a//brand.svg", "a\\brand.svg", "brand.svg\n", "brand.js", "brand.SVG", "Contents/Resources/brand.svg", "contents/resources/brand.svg", String(repeating: "a/", count: 513) + "brand.svg"])
     func rejectsPaths(_ path: String) {
         #expect(throws: NoraPluginValidationError.self) { try manifest(iconPath: path).validate() }
     }
 
-    @Test("Native and script plugins can declare static images", arguments: ["assets/brand.svg", "brand.png", "images/brand.jpg", "images/brand.jpeg"])
+    @Test("Native plugins can declare static images", arguments: ["assets/brand.svg", "brand.png", "images/brand.jpg", "images/brand.jpeg"])
     func acceptsPaths(_ path: String) throws {
         try manifest(iconPath: path).validate()
-        try manifest(iconPath: path, script: false).validate()
     }
 
     @Test("Static SVG markup is accepted without external resource loading")
@@ -54,9 +51,9 @@ struct NoraPluginIconTests {
         try NoraPluginIconAsset.validate(data: Data([255, 216, 255, 217]), path: "brand.jpg")
     }
 
-    private func manifest(iconPath: String?, script: Bool = true) -> NoraPluginManifest {
-        NoraPluginManifest(schemaVersion: script ? 2 : 1, id: "com.example.icon", name: "Icon", version: "1.0.0",
-                           summary: "Plugin icon", publisher: "Example", extensionBundleIdentifier: script ? "" : "com.example.icon.extension",
-                           runtime: script ? .script : .nativeExtension, entryPoint: script ? "plugin.js" : nil, iconPath: iconPath)
+    private func manifest(iconPath: String?) -> NoraPluginManifest {
+        NoraPluginManifest(id: "com.example.icon", name: "Icon", version: "1.0.0",
+                           summary: "Plugin icon", publisher: "Example", extensionBundleIdentifier: "com.example.icon.extension",
+                           iconPath: iconPath)
     }
 }

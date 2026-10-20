@@ -22,6 +22,21 @@ public final class NoraPluginHostClient: @unchecked Sendable {
         self.connection = connection
     }
 
+    public func request<Parameters: Encodable & Sendable, Result: Decodable & Sendable>(
+        method: String, parameters: Parameters, as resultType: Result.Type,
+        timeout: Duration = .seconds(30)
+    ) async throws -> Result {
+        let request = try NoraPluginRequest(method: method, parameters: parameters)
+        let response = try await self.request(request, timeout: timeout)
+        return try response.result(as: resultType)
+    }
+
+    public func present(_ presentation: NoraPluginPanelPresentation) async throws {
+        try presentation.validate()
+        let response = try await request(NoraPluginRequest(method: NoraPluginPanelPresentation.presentMethod, parameters: presentation))
+        if let error = response.error { throw NoraPluginConnectionError.host(error) }
+    }
+
     public func request(_ request: NoraPluginRequest, timeout: Duration = .seconds(30)) async throws -> NoraPluginResponse {
         let data = try NoraPluginWire.encode(request)
         let pending = NoraPluginPendingReply()
