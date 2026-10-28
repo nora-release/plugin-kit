@@ -1,0 +1,22 @@
+[package]
+name = "nora-plugin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Validate, package, and publish Nora plugins and marketplaces."
+
+[[bin]]
+name = "nora-plugin"
+path = "src/main.rs"
+
+[dependencies]
+nora-plugin-manifest = { path = "../nora-plugin-manifest" }
+nora-network = { path = "../nora-network" }
+plist = "1"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["rt", "time"] }
+url = "2"

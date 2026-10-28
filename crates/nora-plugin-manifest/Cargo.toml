@@ -1,0 +1,17 @@
+[package]
+name = "nora-plugin-manifest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Nora plugin manifests, marketplace registries, and release archive verification."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+flate2 = "1"
+regex = "1"
+url = "2"
+unicode-normalization = "0.1"

@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "PluginExtension", targets: ["PluginExtension"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/nora-release/plugin-kit.git", exact: "0.23.0"),
+        .package(url: "https://github.com/nora-release/plugin-kit.git", exact: "__PLUGIN_KIT_VERSION__"),
     ],
     targets: [
         .executableTarget(name: "PluginHost"),

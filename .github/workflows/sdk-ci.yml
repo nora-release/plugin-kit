@@ -18,9 +18,9 @@ permissions:
 
 jobs:
   test:
-    name: Swift (${{ matrix.toolchain }})
+    name: Swift and Rust (${{ matrix.toolchain }})
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -30,10 +30,6 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Set up Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '24'
       - name: Select Swift 6.1 for minimum compatibility
         if: matrix.toolchain == 'minimum'
         shell: bash
@@ -48,31 +44,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
-          import { execFileSync } from 'node:child_process';
-          import { readFileSync } from 'node:fs';
-          const swift = execFileSync('swift', ['--version'], { encoding: 'utf8' });
-          console.log(swift.trim());
-          const toolchain = swift.match(/Swift version (\d+)\.(\d+)/);
-          assert(toolchain && (Number(toolchain[1]) > 6 || (Number(toolchain[1]) === 6 && Number(toolchain[2]) >= 1)), 'Swift 6.1 or newer is required.');
-          if (process.env.SDK_TOOLCHAIN === 'minimum') {
-            assert.equal(`${toolchain[1]}.${toolchain[2]}`, '6.1', 'The minimum compatibility job must use Swift 6.1.');
-          }
-          assert.equal(Number(process.versions.node.split('.')[0]), 24, 'Node 24 is required.');
-          const sdk = JSON.parse(readFileSync('sdk-version.json', 'utf8'));
-          assert.equal(sdk.schemaVersion, 1, 'Unsupported SDK version file schema.');
-          assert.equal(sdk.apiVersion, 1, 'Unsupported plugin API version.');
-          const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
-          assert.equal(typeof sdk.version, 'string', 'SDK version must be a string.');
-          assert(sdk.version.trim() === sdk.version && semver.test(sdk.version), 'SDK version must be a strict semantic version.');
-          if (process.env.SDK_RELEASE_TAG) {
-            assert.equal(process.env.SDK_RELEASE_TAG, `v${sdk.version}`, 'Release tag must match sdk-version.json.');
-          }
-          NODE
+          swift_version="$(swift --version 2>&1)"
+          printf '%s\n' "$swift_version"
+          [[ "$swift_version" =~ Swift\ version\ ([0-9]+)\.([0-9]+) ]]
+          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}"
+          if (( major < 6 || (major == 6 && minor < 1) )); then
+            printf 'Swift 6.1 or newer is required.\n' >&2
+            exit 1
+          fi
+          if [[ "$SDK_TOOLCHAIN" == minimum && "$major.$minor" != 6.1 ]]; then
+            printf 'The minimum compatibility job must use Swift 6.1.\n' >&2
+            exit 1
+          fi
+          tag_option=()
+          [[ -z "$SDK_RELEASE_TAG" ]] || tag_option=(--tag "$SDK_RELEASE_TAG")
+          cargo run --quiet -p nora-plugin -- sdk-version ${tag_option[@]+"${tag_option[@]}"}
       - name: Build Swift Package
         run: make build
-      - name: Test Swift Package and marketplace tools
+      - name: Test Swift Package and Rust crates
         run: make test
       - name: Package the native example with ad hoc signing
         run: make example
