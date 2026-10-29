@@ -365,7 +365,7 @@ impl Harness {
         serde_json::from_str(&line).unwrap()
     }
     async fn initialize(&mut self, enabled: Option<bool>) {
-        let mut params = json!({"apiVersion":1,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/private","manifest":mixed()});
+        let mut params = json!({"apiVersion":2,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/private","manifest":{"contributes":{"provider":mixed()}}});
         if let Some(enabled) = enabled {
             params["subscriptionAccountsEnabled"] = json!(enabled);
         }
@@ -477,7 +477,7 @@ async fn request_flags_override_initial_state_without_mixing_concurrent_authenti
 #[tokio::test]
 async fn source_package_manifest_owns_policy_even_if_effective_manifest_is_overridden() {
     let mut harness = Harness::new();
-    let params = json!({"apiVersion":1,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/private","subscriptionAccountsEnabled":false,"manifest":{"authMethods":[{"id":"oauth","type":"api"}]},"installedManifest":mixed()});
+    let params = json!({"apiVersion":2,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/private","subscriptionAccountsEnabled":false,"manifest":{"contributes":{"provider":{"authMethods":[{"id":"oauth","type":"api"}]}}},"installedManifest":{"contributes":{"provider":mixed()}}});
     let initialized = harness.call(1, "initialize", params).await;
     assert_eq!(initialized["result"]["enabled"], false);
     let response = harness

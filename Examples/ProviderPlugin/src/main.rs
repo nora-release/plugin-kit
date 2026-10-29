@@ -20,14 +20,10 @@ struct Echo {
 
 #[async_trait]
 impl ProviderPlugin for Echo {
-    /// Nora sends the installed manifest once; the models come from it.
+    /// Nora sends the package manifest once; the models come from its
+    /// provider.
     async fn initialize(&self, params: InitializeParams) -> PluginResult<Value> {
-        let models = params
-            .manifest
-            .get("models")
-            .cloned()
-            .ok_or_else(|| PluginError::invalid("nora-provider.json needs models."))?;
-        let _ = self.models.set(models);
+        let _ = self.models.set(Value::Array(params.provider()?.models));
         Ok(json!({ "apiVersion": API_VERSION }))
     }
 

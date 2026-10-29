@@ -48,7 +48,7 @@ async fn exchange(enabled: bool) -> (Value, Value, Value) {
         (
             1,
             "initialize",
-            json!({"apiVersion":1,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{}}),
+            json!({"apiVersion":2,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{}}),
         ),
         (
             2,

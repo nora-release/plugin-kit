@@ -4,15 +4,12 @@ use nora_provider_plugin_sdk::{
     serve, CallContext, FetchRequest, FetchResponse, InitializeParams, PluginError, PluginResult,
     ProviderPlugin, API_VERSION,
 };
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::RwLock;
 
-#[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone)]
 struct Config {
-    #[serde(rename = "baseURL")]
     base_url: String,
     models: Vec<Value>,
 }
@@ -41,8 +38,11 @@ impl OpenAICompatible {
 #[async_trait]
 impl ProviderPlugin for OpenAICompatible {
     async fn initialize(&self, params: InitializeParams) -> PluginResult<Value> {
-        let config: Config = serde_json::from_value(params.manifest)
-            .map_err(|_| PluginError::invalid("The manifest requires baseURL and models."))?;
+        let provider = params.provider()?;
+        let config = Config {
+            base_url: provider.base_url,
+            models: provider.models,
+        };
         let url = reqwest::Url::parse(&config.base_url)
             .map_err(|_| PluginError::invalid("baseURL is invalid."))?;
         if !matches!(url.scheme(), "https" | "http")
@@ -58,7 +58,7 @@ impl ProviderPlugin for OpenAICompatible {
         }
         if config.models.is_empty() {
             return Err(PluginError::invalid(
-                "Configure at least one model in nora-provider.json.",
+                "Configure at least one model in nora-plugin.json.",
             ));
         }
         *self.config.write().map_err(|_| {

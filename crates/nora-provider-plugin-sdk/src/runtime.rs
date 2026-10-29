@@ -251,6 +251,7 @@ where
             .get("installedManifest")
             .filter(|value| value.is_object())
             .or_else(|| params.get("manifest"))
+            .and_then(|manifest| manifest.pointer("/contributes/provider"))
             .cloned()
             .unwrap_or(Value::Null);
     }

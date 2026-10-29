@@ -8,7 +8,7 @@ plugin working in Nora.
 Examples/ProviderPlugin/
 ├── src/main.rs              the provider, built with nora-provider-plugin-sdk
 └── package/                 everything Nora installs besides the executable
-    ├── nora-provider.json   what the plugin is and what it adds
+    ├── nora-plugin.json     what the plugin is and what it contributes
     └── ui/
         ├── panel.html       a panel in each provider's settings
         └── page.html        the plugin's own page
@@ -25,10 +25,10 @@ Then in Nora, open **Plugins › Import Plugin › AI Providers** and choose
 
 | Where | What you see | Declared by |
 | --- | --- | --- |
-| Model picker | **Echo**, answering "You said: …" | `models`, `fetch` in `main.rs` |
-| Settings › AI Providers › Echo Example | **About this provider**, naming the provider it is open on and listing every provider | `ui.panels`, `ui.permissions` |
-| Navigation rail | **Echo**, the plugin's page | `ui.page` |
-| Any provider row's **…** menu | **Inspect with Echo**, opening the page with that provider | `ui.actions` |
+| Model picker | **Echo**, answering "You said: …" | `contributes.provider`, `fetch` in `main.rs` |
+| Settings › AI Providers › Echo Example | **About this provider**, naming the provider it is open on and listing every provider | `contributes.panels`, `reads` |
+| Navigation rail | **Echo**, the plugin's page | `contributes.page` |
+| Any provider row's **…** menu | **Inspect with Echo**, opening the page with that provider | `contributes.actions` |
 
 ## How the parts fit
 
@@ -42,7 +42,7 @@ Then in Nora, open **Plugins › Import Plugin › AI Providers** and choose
   network, and keeps no website data. The page gets `window.nora`:
   - `nora.onContext(fn)`: the provider it is open on (panels), the theme and
     the language;
-  - `await nora.read(name)`: only the reads listed in `ui.permissions`;
+  - `await nora.read(name)`: only the reads listed in `reads`;
     `providers:list` gives provider IDs and names, never credentials;
   - `nora.onAction(fn)`: the menu action that opened the page, with the
     provider it was picked on.

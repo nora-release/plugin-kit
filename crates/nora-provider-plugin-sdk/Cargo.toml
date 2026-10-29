@@ -21,6 +21,7 @@ ipv4-fallback = ["nora-network/ipv4-fallback"]
 
 [dependencies]
 nora-network = { path = "../nora-network" }
+nora-plugin-manifest = { path = "../nora-plugin-manifest" }
 async-trait = "0.1"
 base64 = "0.22"
 futures = "0.3"

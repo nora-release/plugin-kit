@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::pin::Pin;
 
-pub const API_VERSION: u32 = 1;
+pub const API_VERSION: u32 = 2;
 pub const MAX_REQUEST_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_RESPONSE_FRAME_BYTES: usize = 1024 * 1024;
 pub const MAX_HTTP_CHUNK_BYTES: usize = 64 * 1024;
@@ -29,6 +29,8 @@ pub struct InitializeParams {
     pub plugin_id: String,
     pub plugin_directory: PathBuf,
     pub data_directory: PathBuf,
+    /// The package's `nora-plugin.json`, with this configuration's
+    /// connection settings applied to `contributes.provider`.
     pub manifest: Value,
     /// The installed package before the host applies user connection overrides.
     #[serde(default)]
@@ -36,6 +38,23 @@ pub struct InitializeParams {
     /// Explicit host settings, applied after selecting an account's API profile.
     #[serde(default, rename = "config")]
     pub runtime_config: Value,
+}
+
+impl InitializeParams {
+    /// The package manifest this process was started for.
+    pub fn package(&self) -> PluginResult<nora_plugin_manifest::PluginManifest> {
+        serde_json::from_value(self.manifest.clone()).map_err(|error| {
+            PluginError::invalid(format!("The plugin manifest is invalid: {error}"))
+        })
+    }
+
+    /// The provider this package serves, with this configuration's settings.
+    pub fn provider(&self) -> PluginResult<nora_plugin_manifest::Provider> {
+        self.package()?
+            .contributes
+            .provider
+            .ok_or_else(|| PluginError::invalid("This plugin's manifest contributes no provider."))
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]

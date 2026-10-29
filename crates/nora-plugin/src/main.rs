@@ -16,7 +16,7 @@ use options::Options;
 use std::process::ExitCode;
 
 const COMMANDS: &str =
-    "Commands: generate, validate, validate-manifest, validate-icon, release-entry, \
+    "Commands: generate, validate, validate-plugin, validate-manifest, validate-icon, release-entry, \
     local-marketplace, bundle, init-registry, init-author, sdk-version";
 
 fn main() -> ExitCode {
@@ -41,6 +41,17 @@ fn run(arguments: &[String]) -> Result<()> {
                 files::read_json(options.required("--manifest")?, MAXIMUM_MANIFEST_BYTES)?;
             validate_native_manifest(&manifest)?;
             println!("Validated plugin manifest");
+        }
+        "validate-plugin" => {
+            let directory = std::path::Path::new(options.required("--directory")?);
+            let manifest = files::read_limited(
+                directory.join(nora_plugin_manifest::package::MANIFEST_FILE),
+                MAXIMUM_MANIFEST_BYTES,
+                "Plugin manifest exceeds 512 KiB",
+            )?;
+            let manifest = nora_plugin_manifest::PluginManifest::parse(&manifest)?;
+            manifest.validate_files(directory)?;
+            println!("Validated {}@{}", manifest.id, manifest.version);
         }
         "validate-icon" => {
             let path = options.required("--icon")?;

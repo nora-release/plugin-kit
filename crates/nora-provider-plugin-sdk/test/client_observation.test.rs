@@ -63,7 +63,7 @@ async fn caller_observation_negotiates_the_executable_capability_over_stdio() {
     let task = tokio::spawn(serve_io(plugin.clone(), input, output));
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-    writer.write_all(format!("{}\n",json!({"id":1,"method":"initialize","params":{"apiVersion":1,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{}}})).as_bytes()).await.unwrap();
+    writer.write_all(format!("{}\n",json!({"id":1,"method":"initialize","params":{"apiVersion":2,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{}}})).as_bytes()).await.unwrap();
     reader.read_line(&mut line).await.unwrap();
     let value: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(

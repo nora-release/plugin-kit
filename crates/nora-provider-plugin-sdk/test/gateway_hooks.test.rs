@@ -187,7 +187,7 @@ async fn native_jsonl_dispatch_advertises_real_hooks_and_applies_the_current_pol
     ));
     let mut output = BufReader::new(output);
     let mut line = String::new();
-    let init = json!({"id":1,"method":"initialize","params":{"apiVersion":1,"pluginID":"hooks","pluginDirectory":"/plugin","dataDirectory":"/data","manifest":{"authMethods":[{"id":"oauth","type":"oauth"}]},"subscriptionAccountsEnabled":false}});
+    let init = json!({"id":1,"method":"initialize","params":{"apiVersion":2,"pluginID":"hooks","pluginDirectory":"/plugin","dataDirectory":"/data","manifest":{"contributes":{"provider":{"authMethods":[{"id":"oauth","type":"oauth"}]}}},"subscriptionAccountsEnabled":false}});
     input
         .write_all(format!("{init}\n").as_bytes())
         .await

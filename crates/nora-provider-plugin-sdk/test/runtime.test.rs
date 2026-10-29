@@ -138,7 +138,7 @@ impl Harness {
         serde_json::from_str(&line).unwrap()
     }
     async fn initialize(&mut self) {
-        self.send(1,"initialize",json!({"apiVersion":1,"pluginID":"fixture","pluginDirectory":"/plugin","directory":"/plugin","dataDirectory":"/accounts","manifest":{}})).await;
+        self.send(1,"initialize",json!({"apiVersion":2,"pluginID":"fixture","pluginDirectory":"/plugin","directory":"/plugin","dataDirectory":"/accounts","manifest":{}})).await;
         assert_eq!(
             self.next().await,
             json!({"id":1,"result":{"apiVersion":1,"capabilities":{"persistent":true,"bodyFile":true,"httpRequestMeter":true,"accountDiscovery":false,"sdkFeatures":{"subscriptionPolicy":1,"automaticProxy":1}}}})
@@ -413,7 +413,7 @@ async fn dropping_the_runtime_cancels_live_fetch_tasks() {
 
 async fn credentials_harness() -> Harness {
     let mut harness = Harness::new();
-    harness.send(1,"initialize",json!({"apiVersion":1,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"credentialUpdates":true}})).await;
+    harness.send(1,"initialize",json!({"apiVersion":2,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"credentialUpdates":true}})).await;
     assert_eq!(harness.next().await["result"]["apiVersion"], 1);
     harness
 }
@@ -516,7 +516,7 @@ async fn credential_updates_require_a_compatible_host_and_an_active_request_scop
 #[tokio::test]
 async fn metered_fetch_waits_without_blocking_protocol_reads_and_cancellation() {
     let mut host = Harness::new();
-    host.send(1,"initialize",json!({"apiVersion":1,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"httpRequestMeter":true}})).await;
+    host.send(1,"initialize",json!({"apiVersion":2,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"httpRequestMeter":true}})).await;
     assert_eq!(
         host.next().await["result"]["capabilities"]["httpRequestMeter"],
         true
@@ -619,7 +619,7 @@ async fn search_api_http_requests_share_the_same_meter_protocol_as_fetch() {
     let task = tokio::spawn(serve_io(Arc::new(SearchPlugin), input, output));
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-    writer.write_all(format!("{}\n",json!({"id":1,"method":"initialize","params":{"apiVersion":1,"pluginID":"search","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"httpRequestMeter":true}}})).as_bytes()).await.unwrap();
+    writer.write_all(format!("{}\n",json!({"id":1,"method":"initialize","params":{"apiVersion":2,"pluginID":"search","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"httpRequestMeter":true}}})).as_bytes()).await.unwrap();
     reader.read_line(&mut line).await.unwrap();
     let initialized: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
@@ -710,7 +710,7 @@ async fn alpha_search_negotiates_capability_and_waits_for_http_meter_before_answ
     let task = tokio::spawn(serve_io(Arc::new(AlphaSearchPlugin), input, output));
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-    writer.write_all(format!("{}\n",json!({"id":1,"method":"initialize","params":{"apiVersion":1,"pluginID":"openai","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"httpRequestMeter":true}}})).as_bytes()).await.unwrap();
+    writer.write_all(format!("{}\n",json!({"id":1,"method":"initialize","params":{"apiVersion":2,"pluginID":"openai","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"httpRequestMeter":true}}})).as_bytes()).await.unwrap();
     reader.read_line(&mut line).await.unwrap();
     let initialization: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
@@ -791,7 +791,7 @@ async fn learned_allowance_negotiates_capability_and_answers_without_http_permis
     let task = tokio::spawn(serve_io(Arc::new(LearningPlugin), input, output));
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-    writer.write_all(format!("{}\n",json!({"id":1,"method":"initialize","params":{"apiVersion":1,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"httpRequestMeter":true}}})).as_bytes()).await.unwrap();
+    writer.write_all(format!("{}\n",json!({"id":1,"method":"initialize","params":{"apiVersion":2,"pluginID":"fixture","pluginDirectory":"/plugin","dataDirectory":"/accounts","manifest":{},"hostCapabilities":{"httpRequestMeter":true}}})).as_bytes()).await.unwrap();
     reader.read_line(&mut line).await.unwrap();
     let init: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(

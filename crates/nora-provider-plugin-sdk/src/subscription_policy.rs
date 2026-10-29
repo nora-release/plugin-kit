@@ -3,7 +3,10 @@ use serde_json::Value;
 
 tokio::task_local! { static ACCOUNTS_ENABLED: bool; }
 
-/// The installed manifest owns authentication categories. A source binding wins
+/// Each function takes a package's `contributes.provider` declaration, which
+/// owns authentication categories.
+///
+/// A source binding wins
 /// over a token's storage shape: several CLI sign-ins happen to store API keys.
 pub fn subscription_account(manifest: &Value, credentials: &Value) -> bool {
     if credentials
