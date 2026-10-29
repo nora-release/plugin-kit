@@ -24,6 +24,9 @@ pub struct Declaration {
     pub response: bool,
     pub events: Vec<String>,
     pub strategies: Vec<String>,
+    /// The extension's options until the user sets their own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<serde_json::Value>,
 }
 impl Declaration {
     pub fn validate(&self) -> Result<(), String> {
