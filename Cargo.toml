@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "Examples/ProviderPlugin",
     "crates/nora-network",
     "crates/nora-plugin",
     "crates/nora-plugin-manifest",

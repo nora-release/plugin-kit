@@ -1,0 +1,19 @@
+[package]
+name = "nora-example-provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "An example Nora provider plugin with a settings panel, a page, and a menu action."
+
+[[bin]]
+name = "nora-example-provider"
+path = "src/main.rs"
+
+[dependencies]
+nora-provider-plugin-sdk = { path = "../../crates/nora-provider-plugin-sdk" }
+async-trait = "0.1"
+futures = "0.3"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

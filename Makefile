@@ -3,7 +3,7 @@
 SWIFT ?= swift
 CARGO ?= cargo
 
-.PHONY: build test example smoke registration marketplace fmt
+.PHONY: build test example provider-example smoke registration marketplace fmt
 
 build:
 	$(SWIFT) build
@@ -15,6 +15,9 @@ test:
 
 example:
 	bash scripts/build-example.sh
+
+provider-example:
+	bash scripts/build-provider-example.sh
 
 smoke:
 	bash scripts/smoke-example.sh

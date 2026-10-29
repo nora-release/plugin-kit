@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- A panel in each provider configuration's settings. Nora tells it which
+     configuration it is on; it can read only what the manifest's
+     "permissions" lists, and it cannot reach the network. -->
+<style>
+  p { margin: 0 0 8px; }
+  ul { margin: 0; padding-left: 18px; }
+  .muted { opacity: 0.6; }
+</style>
+</head>
+<body>
+<p id="who" class="muted">Waiting for Nora…</p>
+<p>Providers this panel can see:</p>
+<ul id="providers"></ul>
+<script>
+  window.nora.onContext(async (context) => {
+    document.getElementById('who').textContent =
+      `This panel is open on “${context.provider.name}” (${context.provider.id}), ${context.theme} theme.`;
+    const providers = await window.nora.read('providers:list');
+    document.getElementById('providers').replaceChildren(...providers.map((provider) => {
+      const item = document.createElement('li');
+      item.textContent = `${provider.name} — ${provider.id}`;
+      return item;
+    }));
+  });
+</script>
+</body>
+</html>
