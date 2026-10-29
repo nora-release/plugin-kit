@@ -1,0 +1,53 @@
+{
+  "apiVersion": 2,
+  "id": "echo-example",
+  "name": "Echo Example",
+  "version": "0.1.0",
+  "publisher": "Nora",
+  "summary": "Answers every chat with your last message, to show each part of a provider plugin.",
+  "runtime": {
+    "entry": "bin/nora-example-provider"
+  },
+  "contributes": {
+    "provider": {
+      "api": "openai-completions",
+      "baseURL": "https://echo.example.invalid/v1",
+      "models": [
+        {
+          "id": "echo",
+          "name": "Echo"
+        }
+      ]
+    },
+    "panels": [
+      {
+        "slot": "provider",
+        "title": "About this provider",
+        "titles": {
+          "zh-Hans": "关于此供应商"
+        },
+        "file": "ui/panel.html"
+      }
+    ],
+    "page": {
+      "title": "Echo",
+      "titles": {
+        "zh-Hans": "回声"
+      },
+      "file": "ui/page.html"
+    },
+    "actions": [
+      {
+        "id": "inspect",
+        "menu": "provider",
+        "title": "Inspect with Echo",
+        "titles": {
+          "zh-Hans": "用 Echo 查看"
+        }
+      }
+    ]
+  },
+  "reads": [
+    "providers:list"
+  ]
+}

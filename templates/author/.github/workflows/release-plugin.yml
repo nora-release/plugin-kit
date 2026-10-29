@@ -22,10 +22,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Set up Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '24'
+      - name: Install the Nora plugin tool
+        run: cargo install --locked --git https://github.com/nora-release/plugin-kit --tag v__PLUGIN_KIT_VERSION__ nora-plugin
       - name: Require a reviewed commit and an unused release tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,7 +37,7 @@ jobs:
             exit 1
           fi
       - name: Build universal application without signing credentials
-        run: python3 scripts/build-distribution.py --config plugin-release.json --output dist --tag "$GITHUB_REF_NAME"
+        run: nora-plugin bundle --config plugin-release.json --output dist --tag "$GITHUB_REF_NAME"
       - name: Sign and notarize
         env:
           DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
@@ -56,14 +54,10 @@ jobs:
           export NORA_PLUGIN_KEYCHAIN_PATH="$signing_directory/signing.keychain-db"
           export NORA_PLUGIN_NOTARY_PROFILE=nora-plugin-notary
           trap 'security delete-keychain "$NORA_PLUGIN_KEYCHAIN_PATH" >/dev/null 2>&1 || true; rm -rf "$signing_directory"' EXIT
-          signing_password="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+          signing_password="$(openssl rand -hex 32)"
           printf '::add-mask::%s\n' "$signing_password"
-          python3 - "$signing_directory" <<'PY'
-          import base64, os, pathlib, sys
-          root = pathlib.Path(sys.argv[1])
-          (root / 'certificate.p12').write_bytes(base64.b64decode(os.environ['DEVELOPER_ID_P12_BASE64'], validate=True))
-          (root / 'AuthKey.p8').write_text(os.environ['APPLE_API_KEY_P8'])
-          PY
+          printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 --decode > "$signing_directory/certificate.p12"
+          printf '%s' "$APPLE_API_KEY_P8" > "$signing_directory/AuthKey.p8"
           security create-keychain -p "$signing_password" "$NORA_PLUGIN_KEYCHAIN_PATH"
           security set-keychain-settings -lut 3600 "$NORA_PLUGIN_KEYCHAIN_PATH"
           security unlock-keychain -p "$signing_password" "$NORA_PLUGIN_KEYCHAIN_PATH"

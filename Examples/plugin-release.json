@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "packagePath": "..",
+  "manifestPath": "nora-plugin.json",
+  "hostProduct": "NoraPluginExampleHost",
+  "extensionProduct": "NoraPluginExample",
+  "extensionPrincipalClass": "NoraPluginExample.NativePlugin",
+  "minimumSystemVersion": "14.0",
+  "hostResources": [],
+  "extensionResources": []
+}

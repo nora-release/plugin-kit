@@ -1,23 +1,32 @@
 .DEFAULT_GOAL := build
 
 SWIFT ?= swift
-NODE ?= node
+CARGO ?= cargo
 
-.PHONY: build test example smoke marketplace
+.PHONY: build test example provider-example smoke registration marketplace fmt
 
 build:
 	$(SWIFT) build
+	$(CARGO) build --workspace
 
 test:
 	$(SWIFT) test
-	$(NODE) scripts/plugin-marketplace.test.ts
-	PYTHONDONTWRITEBYTECODE=1 python3 scripts/native-host.test.py
+	$(CARGO) test --workspace --all-features
 
 example:
 	bash scripts/build-example.sh
 
+provider-example:
+	bash scripts/build-provider-example.sh
+
 smoke:
 	bash scripts/smoke-example.sh
 
+registration: example
+	$(CARGO) test -p nora-plugin --test cli -- --ignored containing_apps_register_quietly
+
 marketplace:
-	$(NODE) scripts/plugin-marketplace.ts $(ARGS)
+	$(CARGO) run --quiet -p nora-plugin -- $(ARGS)
+
+fmt:
+	$(CARGO) fmt --all

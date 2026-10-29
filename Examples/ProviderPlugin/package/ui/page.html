@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- The plugin's own page in Nora's navigation rail. A provider row's
+     "Inspect with Echo" menu item opens it and calls onAction with the
+     configuration it was picked on. -->
+<style>
+  body { padding: 28px 32px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .muted { opacity: 0.6; }
+  li { margin: 4px 0; }
+  code { font: 12px ui-monospace, SFMono-Regular, monospace; }
+</style>
+</head>
+<body>
+<h1>Echo</h1>
+<p class="muted">Chat with the Echo model and it answers with your last message. Pick
+  “Inspect with Echo” in any provider's menu to see that provider here.</p>
+<h2>Actions received</h2>
+<ul id="actions"><li class="muted">None yet.</li></ul>
+<script>
+  const list = document.getElementById('actions');
+  window.nora.onAction((action) => {
+    if (list.querySelector('.muted')) list.replaceChildren();
+    const item = document.createElement('li');
+    item.innerHTML = '<code></code>';
+    item.firstChild.textContent = `${action.id} → ${action.provider.name} (${action.provider.id})`;
+    list.prepend(item);
+  });
+</script>
+</body>
+</html>

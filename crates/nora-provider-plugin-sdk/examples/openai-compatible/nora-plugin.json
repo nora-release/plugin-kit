@@ -1,0 +1,36 @@
+{
+  "apiVersion": 2,
+  "id": "rust-openai-compatible",
+  "name": "Rust OpenAI-compatible provider",
+  "version": "0.1.0",
+  "runtime": {
+    "entry": "bin/nora-provider-openai"
+  },
+  "contributes": {
+    "provider": {
+      "api": "openai-completions",
+      "baseURL": "https://api.openai.com/v1",
+      "authMethods": [
+        {
+          "id": "apiKey",
+          "type": "api",
+          "label": "API key",
+          "fields": [
+            {
+              "id": "apiKey",
+              "type": "password",
+              "label": "API key",
+              "required": true
+            }
+          ]
+        }
+      ],
+      "models": [
+        {
+          "id": "example-model",
+          "name": "Example model"
+        }
+      ]
+    }
+  }
+}
