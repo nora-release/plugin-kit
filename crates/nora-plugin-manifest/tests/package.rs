@@ -83,6 +83,11 @@ fn old_and_ambiguous_manifests_are_refused() {
             json!("Inspect"),
         ),
         with(package.clone(), "/contributes/hooks", json!(true)),
+        with(
+            package.clone(),
+            "/contributes/tools",
+            json!({ "version": 1 }),
+        ),
         without(package.clone(), "", "runtime"),
         without(package.clone(), "/contributes", "page"),
         with(package.clone(), "/contributes", json!({})),

@@ -42,8 +42,8 @@ pub struct PluginManifest {
     pub summary: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub minimum_host_version: Option<String>,
-    /// The compiled executable Nora runs for the provider, hooks, middleware,
-    /// masker and tools.
+    /// The compiled executable Nora runs for the provider, hooks, middleware
+    /// and masker.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime: Option<Runtime>,
     pub contributes: Contributes,
@@ -60,7 +60,7 @@ pub struct Runtime {
 }
 
 /// Everything a package adds. The declarations Nora interprets itself
-/// (hooks, middleware, masker, tools) are checked by the host.
+/// (hooks, middleware, masker) are checked by the host.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Contributes {
@@ -72,8 +72,6 @@ pub struct Contributes {
     pub middleware: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub masker: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub panels: Vec<Panel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -179,21 +177,20 @@ impl PluginManifest {
         let runs = contributes.provider.is_some()
             || contributes.hooks.is_some()
             || contributes.middleware.is_some()
-            || contributes.masker.is_some()
-            || contributes.tools.is_some();
+            || contributes.masker.is_some();
         let draws = !contributes.panels.is_empty() || contributes.page.is_some();
         ensure(runs || draws, "A plugin must contribute something to Nora")?;
         match &self.runtime {
             Some(runtime) => {
                 ensure(
                     runs,
-                    "Only a provider, hooks, middleware, a masker or tools need a runtime",
+                    "Only a provider, hooks, middleware or a masker need a runtime",
                 )?;
                 validate_entry(&runtime.entry)?;
             }
             None => ensure(
                 !runs,
-                "A provider, hooks, middleware, a masker or tools need a runtime entry",
+                "A provider, hooks, middleware or a masker need a runtime entry",
             )?,
         }
         if let Some(provider) = &contributes.provider {
@@ -210,7 +207,6 @@ impl PluginManifest {
             ("hooks", &contributes.hooks),
             ("middleware", &contributes.middleware),
             ("masker", &contributes.masker),
-            ("tools", &contributes.tools),
         ] {
             if let Some(declaration) = declaration {
                 ensure(
