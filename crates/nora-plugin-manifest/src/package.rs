@@ -202,6 +202,12 @@ impl PluginManifest {
                 provider.models.len() <= 4096 && provider.auth_methods.len() <= 32,
                 "A provider has too many models or sign-in methods",
             )?;
+            ensure(
+                provider.models.iter().all(Value::is_object)
+                    && provider.auth_methods.iter().all(Value::is_object)
+                    && provider.local_sign_ins.iter().all(Value::is_object),
+                "A provider's models, sign-in methods and local sign-ins must be objects",
+            )?;
         }
         for (name, declaration) in [
             ("hooks", &contributes.hooks),

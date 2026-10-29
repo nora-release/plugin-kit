@@ -85,6 +85,16 @@ fn old_and_ambiguous_manifests_are_refused() {
         with(package.clone(), "/contributes/hooks", json!(true)),
         with(
             package.clone(),
+            "/contributes/provider/models",
+            json!(["echo"]),
+        ),
+        with(
+            package.clone(),
+            "/contributes/provider/authMethods",
+            json!(["apiKey"]),
+        ),
+        with(
+            package.clone(),
             "/contributes/tools",
             json!({ "version": 1 }),
         ),
