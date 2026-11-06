@@ -23,18 +23,22 @@ pub fn release_entry(options: &Options) -> Result<()> {
     let repository = repository_path(Some(&Value::from(options.required("--repository")?)))?;
     let tag = options.required("--tag")?;
     let digest = sha256(&archive);
-    let entry = validate_entry(&json!({
+    let mut entry = json!({
         "manifest": manifest,
         "repositoryURL": format!("https://github.com/{repository}"),
         "releaseTag": tag,
-        "teamIdentifier": options.required("--team")?,
         "sha256": digest,
         "downloadURL": format!(
             "https://github.com/{repository}/releases/download/{}/{}",
             encode(tag),
             encode(filename)
         ),
-    }))?;
+    });
+    // Leave the Team ID out for an ad-hoc signed release that only a reviewed catalog lists.
+    if let Some(team) = options.optional("--team") {
+        entry["teamIdentifier"] = Value::from(team);
+    }
+    let entry = validate_entry(&entry)?;
     verify_archive(&entry, &archive)?;
     let output = Path::new(options.required("--output")?);
     let name = manifest["name"].clone();

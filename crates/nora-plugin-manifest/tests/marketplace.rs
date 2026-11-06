@@ -317,7 +317,19 @@ fn archive_links_stay_inside_the_app() {
 #[test]
 fn entries_point_at_their_own_release() {
     assert_eq!(validate_entry(&entry()).unwrap(), entry());
-    assert!(validate_entry(&without(entry(), "teamIdentifier")).is_err());
+    let unsigned = without(entry(), "teamIdentifier");
+    assert_eq!(validate_entry(&unsigned).unwrap(), unsigned);
+    let prefixed = with(
+        entry(),
+        json!({
+            "releaseTag": "github-v1.2.3",
+            "downloadURL": "https://github.com/nora-tests/plugin/releases/download/github-v1.2.3/plugin.zip",
+        }),
+    );
+    assert_eq!(
+        validate_entry(&prefixed).unwrap()["releaseTag"],
+        "github-v1.2.3"
+    );
     let unprefixed = with(
         entry(),
         json!({
@@ -328,7 +340,10 @@ fn entries_point_at_their_own_release() {
     assert_eq!(validate_entry(&unprefixed).unwrap()["releaseTag"], "1.2.3");
     for patch in [
         json!({ "releaseTag": "latest" }),
+        json!({ "releaseTag": "Bad_Name-v1.2.3" }),
+        json!({ "releaseTag": "-v1.2.3" }),
         json!({ "teamIdentifier": "-" }),
+        json!({ "teamIdentifier": null }),
         json!({ "sha256": "0".repeat(64) }),
         json!({ "downloadURL": "https://github.com/other/plugin/releases/download/v1.2.3/plugin.zip" }),
         json!({ "downloadURL": "https://github.com/nora-tests/plugin/releases/latest/download/plugin.zip" }),
