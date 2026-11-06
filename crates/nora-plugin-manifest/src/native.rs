@@ -9,6 +9,7 @@ use std::sync::LazyLock;
 
 pub const MAXIMUM_MANIFEST_BYTES: usize = 512 * 1024;
 const MAXIMUM_SCHEMA_BYTES: usize = 64 * 1024;
+const MAXIMUM_SKILLS: usize = 32;
 const PERMISSIONS: [&str; 6] = [
     "hostInfo",
     "notifications",
@@ -47,6 +48,19 @@ pub fn validate_native_manifest(value: &Value) -> Result<&Value> {
             ICON_EXTENSION.is_match(icon),
             "iconPath must name an SVG, PNG, or JPEG file inside the plugin",
         )?;
+    }
+    let skills = match manifest.get("skills") {
+        None | Some(Value::Null) => &[][..],
+        skills => array(skills, "skills", MAXIMUM_SKILLS)?,
+    };
+    let mut skill_paths = HashSet::new();
+    for skill in skills {
+        let path = relative_resource_path(Some(skill), "skills")?;
+        ensure(
+            !path.to_lowercase().starts_with("contents/resources/"),
+            "skills must be relative to Contents/Resources",
+        )?;
+        ensure(skill_paths.insert(path), "skills must be unique")?;
     }
     identifier(
         manifest.get("extensionBundleIdentifier"),

@@ -229,6 +229,66 @@ fn icon_paths_stay_inside_resources() {
 }
 
 #[test]
+fn skill_folders_stay_inside_resources() {
+    validate_native_manifest(&with(
+        manifest(),
+        json!({ "skills": ["skills/github", "review"] }),
+    ))
+    .unwrap();
+    validate_native_manifest(&with(manifest(), json!({ "skills": [] }))).unwrap();
+    let too_many: Vec<String> = (0..=32).map(|index| format!("skills/{index}")).collect();
+    for skills in [
+        json!(["../skills"]),
+        json!(["/skills"]),
+        json!(["skills/../github"]),
+        json!(["skills//github"]),
+        json!(["Contents/Resources/skills"]),
+        json!(["skills", "skills"]),
+        json!([""]),
+        json!([1]),
+        json!("skills"),
+        json!(too_many),
+    ] {
+        assert!(
+            validate_native_manifest(&with(manifest(), json!({ "skills": skills.clone() })))
+                .is_err(),
+            "{skills}"
+        );
+    }
+}
+
+#[test]
+fn archives_hold_each_listed_skill() {
+    let with_skill = with(manifest(), json!({ "skills": ["skills/github"] }));
+    let manifest_file = || file(MANIFEST_NAME, with_skill.to_string());
+    let skill_name = "Test.app/Contents/Resources/skills/github/SKILL.md";
+    assert_eq!(
+        manifest_from_archive(&zip(&[
+            manifest_file(),
+            file(skill_name, "---\nname: github\n---\n")
+        ]))
+        .unwrap(),
+        with_skill
+    );
+    for skill in [
+        None,
+        Some(file(skill_name, "")),
+        Some(ZipEntry {
+            mode: 0o120777,
+            ..file(skill_name, "SKILL.md")
+        }),
+        Some(file(
+            "Test.app/Contents/Resources/skills/other/SKILL.md",
+            "---",
+        )),
+    ] {
+        let mut entries = vec![manifest_file()];
+        entries.extend(skill);
+        assert!(manifest_from_archive(&zip(&entries)).is_err());
+    }
+}
+
+#[test]
 fn icons_are_static_images() {
     validate_icon_data(SVG.as_bytes(), "assets/brand.svg").unwrap();
     for icon in [

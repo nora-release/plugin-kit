@@ -213,6 +213,20 @@ pub fn manifest_from_archive(data: &[u8]) -> Result<Value> {
         )?;
         validate_icon_data(&bytes, icon_path)?;
     }
+    for skill in manifest
+        .get("skills")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        ensure(
+            files
+                .get(&format!("{root}/Contents/Resources/{skill}/SKILL.md"))
+                .is_some_and(|file| file.size > 0),
+            "ZIP is missing a SKILL.md for one of its skills",
+        )?;
+    }
     Ok(manifest)
 }
 

@@ -25,6 +25,7 @@ extension NoraPluginManifest {
                 throw NoraPluginValidationError.invalid("iconPath", "must name an SVG, PNG, or JPEG file inside the plugin")
             }
         }
+        try Self.skillPaths(skills)
         try Self.identifier(extensionBundleIdentifier, field: "extensionBundleIdentifier")
         try Self.networkHosts(networkDomains)
         guard networkDomains.isEmpty || permissions.contains(.network) else {
@@ -71,6 +72,18 @@ extension NoraPluginManifest {
               !value.contains("\\"), !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
             throw NoraPluginValidationError.invalid(field, "must be a relative resource path inside the plugin")
+        }
+    }
+
+    private static func skillPaths(_ paths: [String]) throws {
+        guard paths.count <= maximumSkills, Set(paths).count == paths.count else {
+            throw NoraPluginValidationError.invalid("skills", "contains duplicates or exceeds \(maximumSkills) folders")
+        }
+        for path in paths {
+            try relativeResourcePath(path, field: "skills")
+            guard !path.lowercased().hasPrefix("contents/resources/") else {
+                throw NoraPluginValidationError.invalid("skills", "must be relative to Contents/Resources")
+            }
         }
     }
 

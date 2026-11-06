@@ -47,7 +47,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 1024,
-      "description": "Optional brand icon relative to the native application\u2019s Contents/Resources directory, packaged as a regular SVG, PNG, or JPEG resource of at most 512 KiB. Symbolic links are prohibited.",
+      "description": "Optional brand icon relative to the native application’s Contents/Resources directory, packaged as a regular SVG, PNG, or JPEG resource of at most 512 KiB. Symbolic links are prohibited.",
       "pattern": "^(?!/)(?![\\s\\S]*(?:^|/)\\.{1,2}(?:/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]+/)*[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]*\\.(?:svg|png|jpg|jpeg)$",
       "not": {
         "anyOf": [
@@ -58,6 +58,21 @@
             "pattern": "^[Cc][Oo][Nn][Tt][Ee][Nn][Tt][Ss]/[Rr][Ee][Ss][Oo][Uu][Rr][Cc][Ee][Ss]/"
           }
         ]
+      }
+    },
+    "skills": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "description": "Skill folders the plugin ships, relative to the native application’s Contents/Resources directory. Each folder holds a SKILL.md; Nora offers these skills only while the plugin is installed and enabled.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "pattern": "^(?!/)(?![\\s\\S]*(?:^|/)\\.{1,2}(?:/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]+/)*[^/\\\\\\u0000-\\u001f\\u007f-\\u009f]+$",
+        "not": {
+          "pattern": "^[Cc][Oo][Nn][Tt][Ee][Nn][Tt][Ss]/[Rr][Ee][Ss][Oo][Uu][Rr][Cc][Ee][Ss]/"
+        }
       }
     },
     "networkDomains": {

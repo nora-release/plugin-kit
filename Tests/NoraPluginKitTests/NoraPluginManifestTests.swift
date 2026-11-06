@@ -30,6 +30,27 @@ struct NoraPluginManifestTests {
         try fixture(version: version).validate()
     }
 
+    @Test("Shipped skill folders round trip and are absent from older manifests")
+    func skills() throws {
+        let manifest = fixture(skills: ["skills/github", "skills/review"])
+        try manifest.validate()
+        #expect(try NoraPluginManifest.decode(JSONEncoder().encode(manifest)).skills == ["skills/github", "skills/review"])
+        #expect(fixture().skills.isEmpty)
+    }
+
+    @Test("Skill folders stay inside Contents/Resources and are unique",
+          arguments: [["/skills/github"], ["../skills"], ["skills/../github"], ["Contents/Resources/skills"], ["skills", "skills"], [""]])
+    func rejectsSkills(_ skills: [String]) {
+        #expect(throws: NoraPluginValidationError.self) { try fixture(skills: skills).validate() }
+    }
+
+    @Test("A plugin ships at most 32 skill folders")
+    func skillLimit() {
+        #expect(throws: NoraPluginValidationError.self) {
+            try fixture(skills: (0 ... 32).map { "skills/skill-\($0)" }).validate()
+        }
+    }
+
     @Test("Contribution identifiers cannot claim another plugin namespace")
     func namespace() {
         #expect(throws: NoraPluginValidationError.self) {
@@ -104,11 +125,12 @@ struct NoraPluginManifestTests {
         #expect(throws: NoraPluginValidationError.self) { try capable(["github.com"], permissions: [.chat]).validate() }
     }
 
-    private func fixture(version: String = "1.0.0", panelID: String = "com.example.native.panel", schema: String = #"{"type":"object","properties":{"text":{"type":"string"}}}"#) -> NoraPluginManifest {
+    private func fixture(version: String = "1.0.0", panelID: String = "com.example.native.panel", schema: String = #"{"type":"object","properties":{"text":{"type":"string"}}}"#, skills: [String] = []) -> NoraPluginManifest {
         NoraPluginManifest(id: "com.example.native", name: "Example", version: version,
                            summary: "Native example", publisher: "Example",
                            extensionBundleIdentifier: "com.example.native.extension", permissions: [.hostInfo],
                            panels: [NoraPluginPanel(id: panelID, title: "Example", systemImage: "puzzlepiece.extension")],
-                           commands: [NoraPluginCommand(id: "com.example.native.echo", title: "Echo", description: "Returns text", inputSchemaJSON: schema, readOnly: true)])
+                           commands: [NoraPluginCommand(id: "com.example.native.echo", title: "Echo", description: "Returns text", inputSchemaJSON: schema, readOnly: true)],
+                           skills: skills)
     }
 }
