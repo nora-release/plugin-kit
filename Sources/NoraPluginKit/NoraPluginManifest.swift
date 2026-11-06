@@ -6,6 +6,7 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
     public static let maximumManifestBytes = 512 * 1024
     public static let maximumSchemaBytes = 64 * 1024
     public static let maximumIconBytes = 512 * 1024
+    public static let maximumSkills = 32
 
     public let schemaVersion: Int
     public let id: String
@@ -20,12 +21,15 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
     public let apiVersion: Int
     public let networkDomains: [String]
     public let iconPath: String?
+    /// Skill folders the plugin ships, relative to `Contents/Resources`; each holds a `SKILL.md`.
+    /// Nora offers these skills only while the plugin is installed and enabled.
+    public let skills: [String]
 
     public init(schemaVersion: Int = 1, id: String, name: String, version: String, summary: String,
                 publisher: String, extensionBundleIdentifier: String,
                 permissions: [NoraPluginPermission] = [], panels: [NoraPluginPanel] = [],
                 commands: [NoraPluginCommand] = [], apiVersion: Int = 1,
-                networkDomains: [String] = [], iconPath: String? = nil) {
+                networkDomains: [String] = [], iconPath: String? = nil, skills: [String] = []) {
         self.schemaVersion = schemaVersion
         self.id = id
         self.name = name
@@ -39,6 +43,7 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
         self.apiVersion = apiVersion
         self.networkDomains = networkDomains
         self.iconPath = iconPath
+        self.skills = skills
     }
 
     public init(from decoder: any Decoder) throws {
@@ -60,6 +65,7 @@ public struct NoraPluginManifest: Codable, Hashable, Sendable, Identifiable {
         apiVersion = try values.decodeIfPresent(Int.self, forKey: .apiVersion) ?? 1
         networkDomains = try values.decodeIfPresent([String].self, forKey: .networkDomains) ?? []
         iconPath = try values.decodeIfPresent(String.self, forKey: .iconPath)
+        skills = try values.decodeIfPresent([String].self, forKey: .skills) ?? []
     }
 
     public static func decode(_ data: Data) throws -> Self {
