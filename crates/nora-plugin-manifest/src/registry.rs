@@ -14,6 +14,8 @@ static REPOSITORY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^/[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*$").unwrap()
 });
 static TEAM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Z0-9]{10}$").unwrap());
+/// A plugin name before `-v`, so one repository can release several plugins.
+static TAG_PREFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9][a-z0-9-]*$").unwrap());
 static DIGEST: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-f0-9]{64}$").unwrap());
 static ASSET: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.zip$").unwrap());
@@ -59,17 +61,21 @@ pub fn validate_entry(value: &Value) -> Result<Value> {
         .and_then(Value::as_str)
         .unwrap_or_default();
     ensure(
-        tag == version || tag == format!("v{version}"),
-        "releaseTag must match the exact manifest version, optionally prefixed by v",
+        release_tag_matches(tag, version),
+        "releaseTag must match the exact manifest version, optionally prefixed by v or by NAME-v",
     )?;
-    let team = entry
-        .get("teamIdentifier")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    ensure(
-        TEAM.is_match(team),
-        "Native teamIdentifier must be a 10-character Apple Developer Team ID",
-    )?;
+    // Without a Team ID the release is ad-hoc signed and trusted only through the catalog that lists it.
+    let team = match entry.get("teamIdentifier") {
+        None => None,
+        Some(value) => {
+            let team = value.as_str().unwrap_or_default();
+            ensure(
+                TEAM.is_match(team),
+                "Native teamIdentifier must be a 10-character Apple Developer Team ID",
+            )?;
+            Some(team)
+        }
+    };
     let digest = entry
         .get("sha256")
         .and_then(Value::as_str)
@@ -98,14 +104,30 @@ pub fn validate_entry(value: &Value) -> Result<Value> {
         asset.is_some_and(|asset| ASSET.is_match(&asset)),
         "Release asset must be a ZIP with a simple filename",
     )?;
-    Ok(json!({
+    let mut validated = json!({
         "manifest": manifest,
         "repositoryURL": entry["repositoryURL"],
         "releaseTag": tag,
         "teamIdentifier": team,
         "downloadURL": download,
         "sha256": digest,
-    }))
+    });
+    if team.is_none() {
+        validated
+            .as_object_mut()
+            .expect("entry is an object")
+            .remove("teamIdentifier");
+    }
+    Ok(validated)
+}
+
+/// `1.2.3`, `v1.2.3`, or `name-v1.2.3` for the manifest version `1.2.3`.
+fn release_tag_matches(tag: &str, version: &str) -> bool {
+    if tag == version || tag == format!("v{version}") {
+        return true;
+    }
+    tag.strip_suffix(&format!("-v{version}"))
+        .is_some_and(|prefix| TAG_PREFIX.is_match(prefix))
 }
 
 /// Checks a whole marketplace and returns it with its plugins in ID order.

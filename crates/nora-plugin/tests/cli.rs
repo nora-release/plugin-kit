@@ -540,6 +540,29 @@ fn release_entry_describes_a_ditto_archive() {
         text(output.join("SHA256SUMS")),
         format!("{}  plugin.zip\n", entry["sha256"].as_str().unwrap())
     );
+    assert_eq!(entry["teamIdentifier"], "ABCDE12345");
+    let unsigned_output = temporary.0.join("unsigned");
+    let unsigned_arguments = [
+        "release-entry",
+        "--manifest",
+        path(&manifest_path),
+        "--archive",
+        path(&archive),
+        "--repository",
+        "https://github.com/nora-tests/plugin",
+        "--tag",
+        "test-v1.0.0",
+        "--output",
+        path(&unsigned_output),
+    ];
+    succeeds(tool(&unsigned_arguments));
+    let unsigned: serde_json::Value =
+        serde_json::from_str(&text(unsigned_output.join("marketplace.json"))).unwrap();
+    assert!(unsigned["plugins"][0].get("teamIdentifier").is_none());
+    assert_eq!(
+        unsigned["plugins"][0]["downloadURL"],
+        "https://github.com/nora-tests/plugin/releases/download/test-v1.0.0/plugin.zip"
+    );
     assert!(
         !tool(&arguments).status.success(),
         "release metadata must not be replaced"
