@@ -1,32 +1,22 @@
-.DEFAULT_GOAL := build
+.DEFAULT_GOAL := check
 
-SWIFT ?= swift
 CARGO ?= cargo
 
-.PHONY: build test example provider-example smoke registration marketplace fmt
+.PHONY: build test example fmt check
 
 build:
-	$(SWIFT) build
-	$(CARGO) build --workspace
+	$(CARGO) build --workspace --all-targets
 
 test:
-	$(SWIFT) test
-	$(CARGO) test --workspace --all-features
+	$(CARGO) test --workspace
 
 example:
-	bash scripts/build-example.sh
-
-provider-example:
-	bash scripts/build-provider-example.sh
-
-smoke:
-	bash scripts/smoke-example.sh
-
-registration: example
-	$(CARGO) test -p nora-plugin --test cli -- --ignored containing_apps_register_quietly
-
-marketplace:
-	$(CARGO) run --quiet -p nora-plugin -- $(ARGS)
+	$(CARGO) run -p nora-plugin --example agent
 
 fmt:
 	$(CARGO) fmt --all
+
+check:
+	$(CARGO) fmt --all --check
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
+	$(CARGO) test --workspace

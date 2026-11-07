@@ -1,20 +1,13 @@
 [workspace]
-members = [
-    "Examples/ProviderPlugin",
-    "crates/nora-network",
-    "crates/nora-plugin",
-    "crates/nora-plugin-manifest",
-    "crates/nora-provider-plugin-sdk",
-]
-exclude = ["crates/nora-network/vendor/reqwest"]
+members = ["crates/nora-plugin"]
 resolver = "2"
 
 [workspace.package]
-version = "0.24.0"
+version = "0.1.0"
 edition = "2021"
 license = "MIT"
-rust-version = "1.88"
+rust-version = "1.92"
 repository = "https://github.com/nora-release/plugin-kit"
 
-[patch.crates-io]
-reqwest = { path = "crates/nora-network/vendor/reqwest" }
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
