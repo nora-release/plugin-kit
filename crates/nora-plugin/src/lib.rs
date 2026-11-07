@@ -16,9 +16,9 @@ mod error;
 mod events;
 mod gate;
 
-pub use ctx::{Ctx, PluginHandle, PluginInfo, Snapshot, State};
-pub use deps::{DepKey, Deps};
-pub use error::{Error, Result};
+pub use ctx::{Ctx, DependencyDiagnostic, PluginHandle, PluginInfo, Snapshot, State};
+pub use deps::{DepKey, Deps, ServiceKey};
+pub use error::{Error, NamedServiceAlreadyProvided, Result};
 pub use events::{Call, Event, Listener, Mode, Waterfall};
 pub use gate::{Gate, Pass};
 
@@ -30,6 +30,16 @@ pub trait Plugin: Send + Sync + 'static {
     type Deps: Deps;
 
     fn apply(&self, ctx: &Ctx, deps: Self::Deps) -> impl Future<Output = Result> + Send;
+
+    /// Required services selected by this instance. Static `Deps` are always
+    /// required as well, even when an override returns only named services.
+    /// Captured once at mount; replace the plugin to change its declaration.
+    fn dependency_keys(&self) -> Vec<ServiceKey> {
+        Self::Deps::keys()
+            .into_iter()
+            .map(ServiceKey::from)
+            .collect()
+    }
 
     fn name(&self) -> &str {
         short_type_name::<Self>()

@@ -1,4 +1,5 @@
 use std::any::{Any, TypeId};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// A service a plugin depends on: its type and a readable name.
@@ -14,6 +15,82 @@ impl DepKey {
         DepKey {
             id: TypeId::of::<T>(),
             name: full.rsplit("::").next().unwrap_or(full),
+        }
+    }
+}
+
+/// A service identity: its Rust type, optionally qualified by an owned name.
+/// Display names never take part in identity, so custom `Deps` keep working.
+#[derive(Clone, Debug)]
+pub struct ServiceKey {
+    id: TypeId,
+    name: Option<Arc<str>>,
+    type_name: &'static str,
+}
+
+impl ServiceKey {
+    pub fn of<T: ?Sized + 'static>() -> Self {
+        DepKey::of::<T>().into()
+    }
+
+    pub fn named<T: ?Sized + 'static>(name: impl Into<String>) -> Self {
+        Self {
+            name: Some(Arc::from(name.into())),
+            ..Self::of::<T>()
+        }
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub fn type_id(&self) -> TypeId {
+        self.id
+    }
+
+    pub fn type_name(&self) -> &'static str {
+        self.type_name
+    }
+
+    pub(crate) fn from_type_id(id: TypeId) -> Self {
+        Self {
+            id,
+            name: None,
+            type_name: "service",
+        }
+    }
+}
+
+impl From<DepKey> for ServiceKey {
+    fn from(key: DepKey) -> Self {
+        Self {
+            id: key.id,
+            name: None,
+            type_name: key.name,
+        }
+    }
+}
+
+impl PartialEq for ServiceKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.name == other.name
+    }
+}
+
+impl Eq for ServiceKey {}
+
+impl Hash for ServiceKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.name.hash(state);
+    }
+}
+
+impl std::fmt::Display for ServiceKey {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.name() {
+            Some(name) => write!(formatter, "{name} ({})", self.type_name),
+            None => formatter.write_str(self.type_name),
         }
     }
 }

@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::deps::{DepKey, Deps};
+use crate::deps::{DepKey, Deps, ServiceKey};
 use crate::events::{self, BoxFuture, Event, Listener, ListenerFn, Waterfall};
 use crate::gate::Gate;
 use crate::{Error, Plugin, Result};
@@ -54,6 +54,14 @@ pub struct PluginInfo {
     pub error: Option<Error>,
 }
 
+/// A required service and whether its provider is currently available.
+#[derive(Clone, Debug)]
+pub struct DependencyDiagnostic {
+    pub plugin_id: u64,
+    pub service: ServiceKey,
+    pub available: bool,
+}
+
 type Cleanup = Box<dyn FnOnce() -> BoxFuture<Result> + Send>;
 
 /// A listener's id and its `ListenerFn<E>`, erased to share one map.
@@ -61,25 +69,51 @@ type ErasedListener = (u64, Arc<dyn Any + Send + Sync>);
 
 trait DynPlugin: Send + Sync + 'static {
     fn name(&self) -> &str;
-    fn keys(&self) -> Vec<DepKey>;
+    fn keys(&self) -> Vec<ServiceKey>;
+    fn static_keys(&self) -> Vec<DepKey>;
     /// The `apply` future, or `None` while a dependency is missing.
     fn start(self: Arc<Self>, ctx: Ctx, lookup: deps::Lookup<'_>) -> Option<BoxFuture<Result>>;
 }
 
-struct Erased<P>(P);
+struct Erased<P> {
+    plugin: P,
+    static_keys: Vec<DepKey>,
+    keys: Vec<ServiceKey>,
+}
+
+impl<P: Plugin> Erased<P> {
+    fn new(plugin: P) -> Self {
+        let static_keys = P::Deps::keys();
+        let mut keys: Vec<ServiceKey> = static_keys.iter().copied().map(ServiceKey::from).collect();
+        for key in plugin.dependency_keys() {
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+        Self {
+            plugin,
+            static_keys,
+            keys,
+        }
+    }
+}
 
 impl<P: Plugin> DynPlugin for Erased<P> {
     fn name(&self) -> &str {
-        self.0.name()
+        self.plugin.name()
     }
 
-    fn keys(&self) -> Vec<DepKey> {
-        P::Deps::keys()
+    fn static_keys(&self) -> Vec<DepKey> {
+        self.static_keys.clone()
+    }
+
+    fn keys(&self) -> Vec<ServiceKey> {
+        self.keys.clone()
     }
 
     fn start(self: Arc<Self>, ctx: Ctx, lookup: deps::Lookup<'_>) -> Option<BoxFuture<Result>> {
         let deps = P::Deps::resolve(lookup)?;
-        Some(Box::pin(async move { self.0.apply(&ctx, deps).await }))
+        Some(Box::pin(async move { self.plugin.apply(&ctx, deps).await }))
     }
 }
 
@@ -101,7 +135,7 @@ struct Fiber {
     epoch: u64,
     error: Option<Error>,
     /// The provider serials `apply` received, to detect a replacement.
-    resolved: Vec<(TypeId, Option<u64>)>,
+    resolved: Vec<(ServiceKey, Option<u64>)>,
     cleanups: Vec<Cleanup>,
     watch: watch::Sender<Snapshot>,
 }
@@ -125,19 +159,19 @@ struct Registry {
     next_id: FiberId,
     next_serial: u64,
     fibers: BTreeMap<FiberId, Fiber>,
-    services: HashMap<TypeId, Binding>,
+    services: HashMap<ServiceKey, Binding>,
     listeners: HashMap<TypeId, Vec<ErasedListener>>,
     shutting_down: bool,
 }
 
 impl Registry {
-    fn serial_of(&self, key: TypeId) -> Option<u64> {
-        self.services.get(&key).map(|binding| binding.serial)
+    fn serial_of(&self, key: &ServiceKey) -> Option<u64> {
+        self.services.get(key).map(|binding| binding.serial)
     }
 
-    fn resolution(&self, keys: &[DepKey]) -> Vec<(TypeId, Option<u64>)> {
+    fn resolution(&self, keys: &[ServiceKey]) -> Vec<(ServiceKey, Option<u64>)> {
         keys.iter()
-            .map(|key| (key.id, self.serial_of(key.id)))
+            .map(|key| (key.clone(), self.serial_of(key)))
             .collect()
     }
 
@@ -176,6 +210,7 @@ pub struct Ctx {
     shared: Arc<Shared>,
     fiber: FiberId,
     epoch: u64,
+    injected: Option<Arc<HashMap<ServiceKey, Arc<dyn Any + Send + Sync>>>>,
 }
 
 impl Ctx {
@@ -219,12 +254,13 @@ impl Ctx {
             shared,
             fiber: ROOT,
             epoch: 0,
+            injected: None,
         })
     }
 
     /// Mounts `plugin` under this context; it unloads with it.
     pub fn plugin(&self, plugin: impl Plugin) -> PluginHandle {
-        let plugin: Arc<dyn DynPlugin> = Arc::new(Erased(plugin));
+        let plugin: Arc<dyn DynPlugin> = Arc::new(Erased::new(plugin));
         let (sender, receiver) = watch::channel(Snapshot {
             state: State::Pending,
             generation: 0,
@@ -277,12 +313,39 @@ impl Ctx {
 
     /// Provides `value` under the type `T`, typically a trait object.
     pub fn provide_as<T: ?Sized + Send + Sync + 'static>(&self, value: Arc<T>) -> Result {
-        let key = TypeId::of::<T>();
+        self.provide_at(ServiceKey::of::<T>(), value)
+    }
+
+    /// Provides one named service until this plugin stops.
+    pub fn provide_named<T: Send + Sync + 'static>(
+        &self,
+        name: impl Into<String>,
+        value: T,
+    ) -> Result {
+        self.provide_named_as::<T>(name, Arc::new(value))
+    }
+
+    pub fn provide_named_as<T: ?Sized + Send + Sync + 'static>(
+        &self,
+        name: impl Into<String>,
+        value: Arc<T>,
+    ) -> Result {
+        self.provide_at(ServiceKey::named::<T>(name), value)
+    }
+
+    fn provide_at<T: ?Sized + Send + Sync + 'static>(
+        &self,
+        key: ServiceKey,
+        value: Arc<T>,
+    ) -> Result {
         let mut registry = self.shared.lock();
         if !registry.is_running(self.fiber, self.epoch) {
             return Err(Error::Inactive);
         }
         if registry.services.contains_key(&key) {
+            if key.name().is_some() {
+                return Err(crate::NamedServiceAlreadyProvided { service: key }.into());
+            }
             return Err(Error::AlreadyProvided {
                 service: DepKey::of::<T>().name,
             });
@@ -290,7 +353,7 @@ impl Ctx {
         registry.next_serial += 1;
         let serial = registry.next_serial;
         registry.services.insert(
-            key,
+            key.clone(),
             Binding {
                 value: Arc::new(value),
                 serial,
@@ -318,8 +381,27 @@ impl Ctx {
     /// The current provider of `T`, if any.
     pub fn get<T: ?Sized + Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         let registry = self.shared.lock();
-        let binding = registry.services.get(&TypeId::of::<T>())?;
+        let binding = registry.services.get(&ServiceKey::of::<T>())?;
         binding.value.downcast_ref::<Arc<T>>().cloned()
+    }
+
+    /// The binding this instance declared and received when it started.
+    /// The root context can inspect current bindings without injecting them.
+    pub fn get_named<T: ?Sized + Send + Sync + 'static>(
+        &self,
+        name: impl Into<String>,
+    ) -> Option<Arc<T>> {
+        let key = ServiceKey::named::<T>(name);
+        if let Some(injected) = &self.injected {
+            return injected.get(&key)?.downcast_ref::<Arc<T>>().cloned();
+        }
+        self.shared
+            .lock()
+            .services
+            .get(&key)?
+            .value
+            .downcast_ref::<Arc<T>>()
+            .cloned()
     }
 
     /// Runs `acquire` now and registers the cleanup it returns, which runs
@@ -425,14 +507,39 @@ impl Ctx {
                 deps: fiber
                     .plugin
                     .as_ref()
-                    .map(|plugin| plugin.keys())
+                    .map(|plugin| plugin.static_keys())
                     .unwrap_or_default()
                     .into_iter()
-                    .map(|key| (key.name, registry.services.contains_key(&key.id)))
+                    .map(|key| {
+                        (
+                            key.name,
+                            registry.services.contains_key(&ServiceKey::from(key)),
+                        )
+                    })
                     .collect(),
                 error: fiber.error.clone(),
             })
             .collect()
+    }
+
+    /// All required keys, including instance-selected names. The existing
+    /// `PluginInfo::deps` remains the static dependency view.
+    pub fn dependency_diagnostics(&self) -> Vec<DependencyDiagnostic> {
+        let registry = self.shared.lock();
+        let mut diagnostics = Vec::new();
+        for (id, fiber) in &registry.fibers {
+            let Some(plugin) = &fiber.plugin else {
+                continue;
+            };
+            for service in plugin.keys() {
+                diagnostics.push(DependencyDiagnostic {
+                    plugin_id: *id,
+                    available: registry.services.contains_key(&service),
+                    service,
+                });
+            }
+        }
+        diagnostics
     }
 
     /// Disposes every plugin, newest first, and refuses new ones.
@@ -597,7 +704,7 @@ impl Driver {
             let ready = plugin
                 .keys()
                 .iter()
-                .all(|key| registry.services.contains_key(&key.id));
+                .all(|key| registry.services.contains_key(key));
             (fiber.state == State::Pending && parent_active && ready).then_some(*id)
         })
     }
@@ -617,8 +724,25 @@ impl Driver {
                 shared: Arc::clone(&self.shared),
                 fiber: id,
                 epoch,
+                injected: Some(Arc::new(
+                    plugin
+                        .keys()
+                        .into_iter()
+                        .filter_map(|key| {
+                            registry
+                                .services
+                                .get(&key)
+                                .map(|binding| (key, Arc::clone(&binding.value)))
+                        })
+                        .collect(),
+                )),
             };
-            let lookup = |key: TypeId| registry.services.get(&key).map(|b| Arc::clone(&b.value));
+            let lookup = |key: TypeId| {
+                registry
+                    .services
+                    .get(&ServiceKey::from_type_id(key))
+                    .map(|b| Arc::clone(&b.value))
+            };
             let Some(run) = Arc::clone(&plugin).start(ctx, &lookup) else {
                 return;
             };

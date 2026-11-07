@@ -3,6 +3,19 @@ use std::sync::Arc;
 
 pub type Result<T = ()> = std::result::Result<T, Error>;
 
+#[derive(Clone, Debug)]
+pub struct NamedServiceAlreadyProvided {
+    pub service: crate::ServiceKey,
+}
+
+impl fmt::Display for NamedServiceAlreadyProvided {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{} is already provided", self.service)
+    }
+}
+
+impl std::error::Error for NamedServiceAlreadyProvided {}
+
 /// What the kernel or a plugin reports. Cheap to clone: a failure is shown
 /// to every waiter and kept in diagnostics.
 #[derive(Clone)]
