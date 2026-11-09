@@ -153,6 +153,11 @@ pub struct Model {
     pub reasoning: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub images: bool,
+    /// The provider's APIs the model is served on, when not all of them:
+    /// of its `api` and `apis` (`openai-chat`, `openai-responses`,
+    /// `anthropic`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub apis: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
 }
