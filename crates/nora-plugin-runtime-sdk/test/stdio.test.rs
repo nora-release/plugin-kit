@@ -201,6 +201,7 @@ struct StreamingHost {
     child: Child,
     table: std::sync::Arc<nora_plugin_runtime_sdk::streams::StreamTable>,
     to_plugin: tokio::sync::mpsc::Sender<Value>,
+    raw: tokio::sync::mpsc::Sender<Vec<u8>>,
     replies: tokio::sync::mpsc::UnboundedReceiver<Value>,
 }
 
@@ -213,9 +214,24 @@ impl StreamingHost {
             mut output,
         } = Fixture::new();
         let (to_plugin, mut frames) = tokio::sync::mpsc::channel::<Value>(256);
+        let (raw, mut raws) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
         tokio::spawn(async move {
-            while let Some(frame) = frames.recv().await {
-                if write_frame(&mut input, &frame, 1024 * 1024).await.is_err() {
+            use tokio::io::AsyncWriteExt;
+            loop {
+                let written = tokio::select! {
+                    frame = frames.recv() => match frame {
+                        Some(frame) => write_frame(&mut input, &frame, 1024 * 1024).await.is_ok(),
+                        None => return,
+                    },
+                    bytes = raws.recv() => match bytes {
+                        Some(mut bytes) => {
+                            bytes.push(b'\n');
+                            input.write_all(&bytes).await.is_ok() && input.flush().await.is_ok()
+                        }
+                        None => return,
+                    },
+                };
+                if !written {
                     return;
                 }
             }
@@ -242,6 +258,7 @@ impl StreamingHost {
             child,
             table,
             to_plugin,
+            raw,
             replies,
         };
         let mut params =
@@ -261,6 +278,11 @@ impl StreamingHost {
 
     async fn send(&self, frame: Value) {
         self.to_plugin.send(frame).await.unwrap();
+    }
+
+    /// Writes bytes as they are, a newline after them.
+    async fn send_raw(&self, bytes: Vec<u8>) {
+        self.raw.send(bytes).await.unwrap();
     }
 
     async fn reply(&mut self) -> Value {
@@ -377,4 +399,38 @@ async fn protocol_one_takes_no_streams() {
         .unwrap()
         .unwrap();
     assert!(!status.success());
+}
+
+/// A call's first data may come right behind the call, in the same write:
+/// its streams are the plugin's as it reads the call, not once its handler
+/// runs.
+#[tokio::test]
+async fn a_streams_first_frame_right_behind_its_call_is_taken() {
+    for round in 0..50 {
+        let mut host = StreamingHost::start(2).await;
+        let input = host.table.open_writer(CALL(2)).unwrap();
+        let mut output = host.table.open_reader(CALL(2)).unwrap();
+        let call = json!({"jsonrpc":"2.0","id":2,"method":"services/call","params":{
+            "service":"example.echo","method":"copy","arguments":{},
+            "inputStream": input.id(), "outputStream": output.id(),
+        }});
+        let data = json!({"jsonrpc":"2.0","method":"streams/data",
+            "params":{"stream": input.id(), "data": "aGk=", "end": true}});
+        // one write, so the plugin reads both before it runs anything
+        let mut both = serde_json::to_vec(&call).unwrap();
+        both.push(b'\n');
+        both.extend(serde_json::to_vec(&data).unwrap());
+        host.send_raw(both).await;
+        std::mem::forget(input);
+        assert_eq!(
+            host.reply().await["result"],
+            json!({"head": true}),
+            "round {round}"
+        );
+        let copied = tokio::time::timeout(Duration::from_secs(5), output.read_to_end(1024))
+            .await
+            .expect("the copy stalled")
+            .unwrap();
+        assert_eq!(copied, b"hi", "round {round}");
+    }
 }

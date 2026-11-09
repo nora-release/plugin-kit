@@ -281,6 +281,18 @@ private final class StreamingHost: @unchecked Sendable {
         try Self.write(.object(fields), to: input, lock: writeLock)
     }
 
+    /// Writes frames back to back, in one write.
+    func sendTogether(_ frames: [JSONValue]) throws {
+        var data = Data()
+        for frame in frames {
+            data.append(try JSONEncoder().encode(frame))
+            data.append(0x0A)
+        }
+        writeLock.lock()
+        defer { writeLock.unlock() }
+        try input.write(contentsOf: data)
+    }
+
     func reply() async throws -> [String: JSONValue] {
         let mailbox = mailbox
         return try await withTimeout(5) { await mailbox.take() }
@@ -344,4 +356,28 @@ private final class StreamingHost: @unchecked Sendable {
     try host.send(["jsonrpc": .string("2.0"), "method": .string("streams/credit"),
                    "params": .object(["stream": .unsigned(1), "bytes": .unsigned(1)])])
     await #expect(throws: StreamViolation.self) { try await withTimeout(5) { try await host.run.value } }
+}
+
+/// A call's first data may come right behind the call, in the same write:
+/// its streams are the plugin's as it reads the call, not once its handler
+/// runs.
+@Test func aStreamsFirstFrameRightBehindItsCallIsTaken() async throws {
+    for round in 0 ..< 30 {
+        let host = try await StreamingHost(version: pluginStreamsProtocolVersion)
+        defer { host.close() }
+        let key = StreamCallKey(local: true, id: 2)
+        let input = try host.table.openWriter(key)
+        let output = try host.table.openReader(key)
+        try host.sendTogether([
+            .object(["jsonrpc": .string("2.0"), "id": .unsigned(2), "method": .string("services/call"),
+                     "params": .object(["service": .string("example.echo"), "method": .string("copy"),
+                                        "arguments": .object([:]), "inputStream": .unsigned(input.id),
+                                        "outputStream": .unsigned(output.id)])]),
+            .object(["jsonrpc": .string("2.0"), "method": .string("streams/data"),
+                     "params": .object(["stream": .unsigned(input.id), "data": .string("aGk="), "end": .bool(true)])]),
+        ])
+        #expect(try await host.reply()["result"] == .object(["head": .bool(true)]), "round \(round)")
+        let copied = try await withTimeout(5) { try await output.readToEnd(limit: 1024) }
+        #expect(copied == Data("hi".utf8), "round \(round)")
+    }
 }

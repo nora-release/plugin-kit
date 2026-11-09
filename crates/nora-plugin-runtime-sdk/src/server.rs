@@ -4,7 +4,7 @@ use crate::protocol::{
     CALL_TOOL, CANCELLED, DEFAULT_MAX_FRAME_BYTES, DEFAULT_MAX_IN_FLIGHT, DEFAULT_STREAM_WINDOW,
     INITIALIZE, JSONRPC_VERSION, SHUTDOWN, STREAMS_PROTOCOL_VERSION, STREAM_CREDIT, STREAM_DATA,
 };
-use crate::streams::{CallKey, Side, StreamTable};
+use crate::streams::{CallKey, Side, StreamReader, StreamTable, StreamWriter};
 use crate::{transport, Plugin, PluginContext};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -179,9 +179,17 @@ where
                 let context = context.clone().with_request_id(id);
                 let initialized = Arc::clone(&initialized);
                 let services = Arc::clone(&services);
+                // a call's streams are taken as the call is read, before
+                // any frame after it: its first data may come right behind it
+                let taken = if request.method == CALL_TOOL || request.method == CALL_SERVICE {
+                    take_streams(&streams, &version, id, &request.params)
+                } else {
+                    Ok((None, None))
+                };
                 let connection = Connection {
                     streams: Arc::clone(&streams),
                     version: Arc::clone(&version),
+                    taken: std::sync::Mutex::new(Some(taken)),
                 };
                 let response_writer = outgoing.clone();
                 let task = jobs.spawn(async move {
@@ -233,33 +241,44 @@ impl Drop for AbortWriter {
     }
 }
 
-/// What a call needs of its connection: its streams, and the version the
-/// host chose.
+type Taken = Result<(Option<StreamReader>, Option<StreamWriter>), RpcError>;
+
+/// What a call needs of its connection: its streams, taken as the call was
+/// read, and the version the host chose.
 struct Connection {
     streams: Arc<StreamTable>,
     version: Arc<AtomicU32>,
+    taken: std::sync::Mutex<Option<Taken>>,
 }
 
 impl Connection {
-    /// The streams a call names, handed to its context.
-    fn attach(
-        &self,
-        id: u64,
-        input: Option<u64>,
-        output: Option<u64>,
-        context: PluginContext,
-    ) -> Result<PluginContext, RpcError> {
-        if input.is_none() && output.is_none() {
+    /// The streams the call took, handed to its context.
+    fn attach(&self, context: PluginContext) -> Result<PluginContext, RpcError> {
+        let taken = self
+            .taken
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .unwrap_or(Ok((None, None)));
+        let (reader, writer) = taken?;
+        if reader.is_none() && writer.is_none() {
             return Ok(context);
         }
-        if self.version.load(Ordering::Acquire) != STREAMS_PROTOCOL_VERSION {
-            return Err(RpcError::invalid_params("Streams need protocol 2"));
-        }
-        let (reader, writer) = self
-            .streams
-            .accept(CallKey { local: false, id }, input, output)?;
         Ok(context.with_streams(reader, writer))
     }
+}
+
+/// The streams a call's params name, taken from the table.
+fn take_streams(streams: &Arc<StreamTable>, version: &AtomicU32, id: u64, params: &Value) -> Taken {
+    let stream = |key: &str| params.get(key).and_then(Value::as_u64);
+    let (input, output) = (stream("inputStream"), stream("outputStream"));
+    if input.is_none() && output.is_none() {
+        return Ok((None, None));
+    }
+    if version.load(Ordering::Acquire) != STREAMS_PROTOCOL_VERSION {
+        return Err(RpcError::invalid_params("Streams need protocol 2"));
+    }
+    streams.accept(CallKey { local: false, id }, input, output)
 }
 
 async fn dispatch<P: Plugin>(
@@ -270,7 +289,6 @@ async fn dispatch<P: Plugin>(
     services: &RwLock<BTreeSet<String>>,
     connection: &Connection,
 ) -> Result<Value, RpcError> {
-    let id = request.id.unwrap_or_default();
     match request.method.as_str() {
         INITIALIZE => {
             let params: crate::protocol::InitializeParams = serde_json::from_value(request.params)
@@ -331,8 +349,7 @@ async fn dispatch<P: Plugin>(
             }
             let params: CallToolParams = serde_json::from_value(request.params)
                 .map_err(|_| RpcError::invalid_params("Invalid tool call parameters"))?;
-            let context =
-                connection.attach(id, params.input_stream, params.output_stream, context)?;
+            let context = connection.attach(context)?;
             serde_json::to_value(plugin.call_tool(params, context).await?)
                 .map_err(|error| RpcError::new(-32603, error.to_string()))
         }
@@ -355,8 +372,7 @@ async fn dispatch<P: Plugin>(
             // The callback context already carries the actual inbound ID.
             // Wire data cannot change the provenance of reverse calls.
             params.parent_request_id = None;
-            let context =
-                connection.attach(id, params.input_stream, params.output_stream, context)?;
+            let context = connection.attach(context)?;
             plugin.call_service(params, context).await
         }
         _ => Err(RpcError::method_not_found()),

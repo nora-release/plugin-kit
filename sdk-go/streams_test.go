@@ -486,3 +486,31 @@ func base64Of(data []byte) string {
 	encoded, _ := json.Marshal(data)
 	return string(encoded[1 : len(encoded)-1])
 }
+
+// A call's first data may come right behind the call, in the same write:
+// its streams are the plugin's as it reads the call, not once its handler
+// runs.
+func TestAStreamsFirstFrameRightBehindItsCallIsTaken(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		host := startStreamingHost(t, StreamsProtocolVersion)
+		key := CallKey{Local: true, ID: 2}
+		input, _ := host.table.OpenWriter(key)
+		output, _ := host.table.OpenReader(key)
+		call, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "services/call", "params": map[string]any{
+			"service": "example.echo", "method": "copy", "arguments": map[string]any{},
+			"inputStream": input.ID(), "outputStream": output.ID()}})
+		data, _ := json.Marshal(notification(methodStreamData, streamData{Stream: input.ID(), Data: "aGk=", End: true}))
+		host.writeMu.Lock()
+		_, err := host.input.Write(append(append(append(call, '\n'), data...), '\n'))
+		host.writeMu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reply := host.reply(t); string(reply["result"]) != `{"head":true}` {
+			t.Fatalf("round %d: %s", i, reply["error"])
+		}
+		if got, err := readAll(t, output); err != nil || string(got) != "hi" {
+			t.Fatalf("round %d: %q %v", i, got, err)
+		}
+	}
+}

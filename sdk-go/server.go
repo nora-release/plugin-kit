@@ -238,6 +238,11 @@ func (server *server) receive(ctx context.Context, data []byte) (bool, error) {
 	}
 	requestContext, cancel := context.WithCancel(ctx)
 	invocation := &serviceInvocation{cancel: cancel}
+	// a call's streams are taken as the call is read, before any frame
+	// after it: its first data may come right behind it
+	if request.Method == "tools/call" || request.Method == "services/call" {
+		invocation.streams, invocation.streamsErr = server.acceptStreams(*request.ID, request.Params)
+	}
 	server.active[*request.ID] = invocation
 	server.workers.Add(1)
 	server.mu.Unlock()
@@ -262,7 +267,7 @@ func (server *server) run(ctx context.Context, invocation *serviceInvocation, re
 			}
 		}()
 		ctx = context.WithValue(ctx, serviceContextKey{}, serviceContext{server, *request.ID, invocation})
-		result, err = server.invoke(ctx, *request.ID, request)
+		result, err = server.invoke(ctx, invocation, request)
 	}()
 	server.mu.Lock()
 	invocation.complete = true
@@ -279,7 +284,7 @@ func (server *server) run(ctx context.Context, invocation *serviceInvocation, re
 	}
 }
 
-func (server *server) invoke(ctx context.Context, id uint64, request request) (any, error) {
+func (server *server) invoke(ctx context.Context, invocation *serviceInvocation, request request) (any, error) {
 	switch request.Method {
 	case "initialize":
 		var params InitializeParams
@@ -343,7 +348,7 @@ func (server *server) invoke(ctx context.Context, id uint64, request request) (a
 		if err := decodeStrict(request.Params, &params); err != nil || params.Name == "" || len(bytes.TrimSpace(params.Arguments)) == 0 || bytes.TrimSpace(params.Arguments)[0] != '{' {
 			return nil, &RPCError{Code: -32602, Message: "Invalid tool call parameters"}
 		}
-		ctx, err := server.attach(ctx, id, params.InputStream, params.OutputStream)
+		ctx, err := attach(ctx, invocation)
 		if err != nil {
 			return nil, err
 		}
@@ -364,7 +369,7 @@ func (server *server) invoke(ctx context.Context, id uint64, request request) (a
 		if !declared || !supported {
 			return nil, &RPCError{Code: -32601, Message: "The plugin service is not supported"}
 		}
-		ctx, err := server.attach(ctx, id, params.InputStream, params.OutputStream)
+		ctx, err := attach(ctx, invocation)
 		if err != nil {
 			return nil, err
 		}
@@ -376,22 +381,35 @@ func (server *server) invoke(ctx context.Context, id uint64, request request) (a
 	}
 }
 
-// attach hands the streams a call names to its handler's context.
-func (server *server) attach(ctx context.Context, id uint64, input, output *uint64) (context.Context, error) {
-	if input == nil && output == nil {
+// acceptStreams takes the streams a call names, as the call is read. The
+// lock is held.
+func (server *server) acceptStreams(id uint64, params json.RawMessage) (*callStreams, error) {
+	var ids struct {
+		InputStream  *uint64 `json:"inputStream"`
+		OutputStream *uint64 `json:"outputStream"`
+	}
+	if json.Unmarshal(params, &ids) != nil || ids.InputStream == nil && ids.OutputStream == nil {
+		return nil, nil
+	}
+	if server.version != StreamsProtocolVersion {
+		return nil, &RPCError{Code: -32602, Message: "Streams need protocol 2"}
+	}
+	reader, writer, err := server.streams.Accept(CallKey{ID: id}, ids.InputStream, ids.OutputStream)
+	if err != nil {
+		return nil, err
+	}
+	return &callStreams{input: reader, output: writer}, nil
+}
+
+// attach hands the streams the call took to its handler's context.
+func attach(ctx context.Context, invocation *serviceInvocation) (context.Context, error) {
+	if invocation.streamsErr != nil {
+		return ctx, invocation.streamsErr
+	}
+	if invocation.streams == nil {
 		return ctx, nil
 	}
-	server.mu.Lock()
-	version := server.version
-	server.mu.Unlock()
-	if version != StreamsProtocolVersion {
-		return ctx, &RPCError{Code: -32602, Message: "Streams need protocol 2"}
-	}
-	reader, writer, err := server.streams.Accept(CallKey{ID: id}, input, output)
-	if err != nil {
-		return ctx, err
-	}
-	return context.WithValue(ctx, streamsContextKey{}, &callStreams{input: reader, output: writer}), nil
+	return context.WithValue(ctx, streamsContextKey{}, invocation.streams), nil
 }
 
 type streamsContextKey struct{}
@@ -522,6 +540,10 @@ type serviceContextKey struct{}
 type serviceInvocation struct {
 	cancel   context.CancelFunc
 	complete bool
+	// streams are the call's, taken as it was read; streamsErr why its
+	// streams couldn't be
+	streams    *callStreams
+	streamsErr error
 }
 type serviceContext struct {
 	server     *server

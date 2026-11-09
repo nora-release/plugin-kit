@@ -258,21 +258,29 @@ public actor PluginServer {
         }
         let invocationID = UUID()
         requestInvocations[id] = invocationID
-        requests[id] = Task { [weak self] in
+        // a call's streams are taken as the call is read, before any frame
+        // after it: its first data may come right behind it
+        var taken: Result<PluginStreams.CallStreams?, RPCError> = .success(nil)
+        if method == "tools/call" || method == "services/call" {
+            taken = takeStreams(id: id, params: frame.params ?? .null)
+        }
+        requests[id] = Task { [weak self, taken] in
             guard let self else { return }
-            await execute(id: id, invocationID: invocationID, method: method, params: frame.params ?? .null)
+            await execute(id: id, invocationID: invocationID, method: method, params: frame.params ?? .null, taken: taken)
         }
         return false
     }
 
-    private func execute(id: UInt64, invocationID: UUID, method: String, params: JSONValue) async {
+    private func execute(id: UInt64, invocationID: UUID, method: String, params: JSONValue,
+                         taken: Result<PluginStreams.CallStreams?, RPCError>) async
+    {
         defer {
             requests.removeValue(forKey: id)
             requestInvocations.removeValue(forKey: id)
         }
         do {
             let result = try await PluginHostServices.$context.withValue(.init(server: self, parentRequestID: id, invocationID: invocationID)) {
-                try await invoke(id: id, method: method, params: params)
+                try await invoke(method: method, params: params, taken: taken)
             }
             try Task.checkCancellation()
             guard !closing else { return }
@@ -288,7 +296,9 @@ public actor PluginServer {
         }
     }
 
-    private func invoke(id: UInt64, method: String, params: JSONValue) async throws -> JSONValue {
+    private func invoke(method: String, params: JSONValue,
+                        taken: Result<PluginStreams.CallStreams?, RPCError>) async throws -> JSONValue
+    {
         let data = try JSONEncoder().encode(params)
         switch method {
         case "initialize":
@@ -326,7 +336,7 @@ public actor PluginServer {
             guard !parameters.name.isEmpty, case .object = parameters.arguments else {
                 throw RPCError(code: -32602, message: "Invalid tool call parameters")
             }
-            let calls = try callStreams(id: id, data: data)
+            let calls = try taken.get()
             return try await PluginStreams.$current.withValue(calls) {
                 try await value(plugin.callTool(parameters))
             }
@@ -338,7 +348,7 @@ public actor PluginServer {
             guard provided.contains(parameters.service) else {
                 throw RPCError(code: -32601, message: "The plugin service is not supported")
             }
-            let calls = try callStreams(id: id, data: data)
+            let calls = try taken.get()
             return try await PluginStreams.$current.withValue(calls) {
                 try await plugin.callService(parameters)
             }
@@ -347,20 +357,23 @@ public actor PluginServer {
         }
     }
 
-    /// The streams a call names, for its handler.
-    private func callStreams(id: UInt64, data: Data) throws -> PluginStreams.CallStreams? {
-        struct StreamIDs: Decodable {
-            let inputStream: UInt64?
-            let outputStream: UInt64?
-        }
-        let ids = try JSONDecoder().decode(StreamIDs.self, from: data)
-        guard ids.inputStream != nil || ids.outputStream != nil else { return nil }
+    /// The streams a call's params name, taken from the table as the call
+    /// is read.
+    private func takeStreams(id: UInt64, params: JSONValue) -> Result<PluginStreams.CallStreams?, RPCError> {
+        let input = params["inputStream"]?.unsignedValue
+        let output = params["outputStream"]?.unsignedValue
+        guard input != nil || output != nil else { return .success(nil) }
         guard version == pluginStreamsProtocolVersion, let streams else {
-            throw RPCError(code: -32602, message: "Streams need protocol 2")
+            return .failure(RPCError(code: -32602, message: "Streams need protocol 2"))
         }
-        let (input, output) = try streams.accept(StreamCallKey(local: false, id: id),
-                                                 input: ids.inputStream, output: ids.outputStream)
-        return PluginStreams.CallStreams(input: input, output: output)
+        do {
+            let (reader, writer) = try streams.accept(StreamCallKey(local: false, id: id), input: input, output: output)
+            return .success(PluginStreams.CallStreams(input: reader, output: writer))
+        } catch let error as RPCError {
+            return .failure(error)
+        } catch {
+            return .failure(RPCError(code: -32602, message: error.localizedDescription))
+        }
     }
 
     fileprivate func writeFrame(_ frame: JSONValue) throws {

@@ -86,6 +86,10 @@ frame limit. Everything in version 1 stays as it is.
 - The side that sends the call allocates its streams' ids: the host odd
   ones, the plugin even ones, increasing within a connection and never
   reused.
+- The receiver of a call takes its streams as it reads the call, before it
+  reads the next frame: the call's first data may come right behind it, in
+  the same write. A receiver that took them only once it got round to the
+  call would see that data as for an unknown stream.
 - A stream belongs to the call that named it. The call is done once it is
   answered and all its streams have ended; until then it holds its place
   among the requests in flight and its deadline.
