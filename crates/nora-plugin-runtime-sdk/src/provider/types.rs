@@ -229,8 +229,13 @@ pub struct Usage {
     pub plan: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub windows: Vec<UsageWindow>,
+    /// Resets the account holds, each starting its windows again at once.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resets: Option<UsageResets>,
 }
 
+/// An allowance, or what is left of one. With `used` it is a share, shown
+/// as a bar; with only `balance` it is an amount, shown as its number.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageWindow {
@@ -244,6 +249,27 @@ pub struct UsageWindow {
     pub balance: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+}
+
+/// The resets an account holds (ChatGPT's rate-limit resets): how many,
+/// and each one, the soonest to run out first.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageResets {
+    pub count: u32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cards: Vec<ResetCard>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetCard {
+    /// The vendor's id for it, which spending this one names.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// When it runs out, RFC 3339; none when it never does.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
 }
 
 /// `provider/checkin`'s answer: what a daily check-in came to.
