@@ -7,9 +7,13 @@ plugins like any other.
 This repository holds what a plugin author needs; Nora holds the host modules
 that use it.
 
-| Crate | What it is |
+| Part | What it is |
 | --- | --- |
 | [`nora-plugin`](crates/nora-plugin) | The kernel: services, dependency-driven lifecycle, events, leases |
+| [`nora-plugin-protocol`](crates/nora-plugin-protocol) | The messages a host and a process plugin exchange ([PROTOCOL.md](PROTOCOL.md)) |
+| [`nora-plugin-runtime-sdk`](crates/nora-plugin-runtime-sdk) | Write a process plugin in Rust |
+| [`sdk-go`](sdk-go) | Write a process plugin in Go (`github.com/nora-release/plugin-kit/sdk-go`) |
+| [`sdk-swift`](sdk-swift) | Write a process plugin in Swift |
 
 ## The model
 
@@ -76,8 +80,12 @@ retries only when a dependency changes, and shutdown unloads newest first.
 
 ```sh
 make example   # an agent's tools and hooks as plugins, step by step
-make check     # format, clippy with warnings denied, tests
+make check     # format, clippy with warnings denied, tests, the SDKs' tests
 ```
+
+Each SDK ships an echo plugin (`nora-plugin-runtime-sdk-fixture`,
+[`sdk-go/examples/echo`](sdk-go/examples/echo), `nora-plugin-echo`) with an
+`echo` tool and an `example.echo` service.
 
 The example in [`crates/nora-plugin/examples/agent`](crates/nora-plugin/examples/agent)
 builds an `agent.tools` extension point, a `before_tool_call` guard, a prompt
@@ -93,7 +101,7 @@ another plugin to become active.
 ## Not here yet
 
 - The plugin manifest and its install and trust model
-- Plugins in other processes and languages, and their SDKs
+- A host for process plugins (Nora's runtime has its own)
 - Scoped service names (one provider per workspace or session)
 - Starting independent plugins concurrently
 

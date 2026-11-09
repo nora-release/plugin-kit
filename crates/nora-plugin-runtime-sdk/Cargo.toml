@@ -1,0 +1,29 @@
+[package]
+name = "nora-plugin-runtime-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Agent-independent Rust SDK for Nora runtime plugins."
+
+[[bin]]
+name = "nora-plugin-runtime-sdk-fixture"
+path = "test/fixtures/echo.rs"
+test = false
+bench = false
+
+[[test]]
+name = "stdio"
+path = "test/stdio.test.rs"
+
+[dependencies]
+base64 = "0.22"
+nora-plugin-protocol = { path = "../nora-plugin-protocol" }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "io-util", "io-std", "sync", "time", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "process"] }
+
+[lints]
+workspace = true

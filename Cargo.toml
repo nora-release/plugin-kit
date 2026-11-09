@@ -1,5 +1,9 @@
 [workspace]
-members = ["crates/nora-plugin"]
+members = [
+    "crates/nora-plugin",
+    "crates/nora-plugin-protocol",
+    "crates/nora-plugin-runtime-sdk",
+]
 resolver = "2"
 
 [workspace.package]
