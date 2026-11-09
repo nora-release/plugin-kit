@@ -5,6 +5,7 @@ pub mod transport;
 pub use nora_plugin_protocol as protocol;
 
 mod context;
+pub mod provider;
 mod server;
 pub mod streams;
 

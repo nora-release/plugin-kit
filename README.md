@@ -92,6 +92,47 @@ builds an `agent.tools` extension point, a `before_tool_call` guard, a prompt
 waterfall, a session scope and a service swap, and reads one tool snapshot per
 turn.
 
+## Provider plugins
+
+A plugin that adds a model provider runs in Nora's router and answers the
+service `ai.provider`: sign in, renew, list models, connect or send a
+request, read usage, check in. In Rust, implement
+`nora_plugin_runtime_sdk::provider::Provider` for the questions the
+manifest says the plugin answers and serve it; the rest are answered as
+unsupported:
+
+```rust
+use nora_plugin_runtime_sdk::protocol::RpcError;
+use nora_plugin_runtime_sdk::provider::{serve_provider, Connection, Model, Provider, Question};
+
+struct Acme;
+
+impl Provider for Acme {
+    async fn models(&self, _question: Question) -> Result<Vec<Model>, RpcError> {
+        Ok(vec![Model::new("acme-large")])
+    }
+
+    async fn connect(&self, question: Question) -> Result<Connection, RpcError> {
+        let token: String = question.credentials()?;
+        Ok(Connection {
+            headers: [("Authorization".into(), format!("Bearer {token}"))].into(),
+            ..Connection::default()
+        })
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> std::io::Result<()> {
+    serve_provider(Acme).await
+}
+```
+
+The router keeps every account's credentials and hands them back with
+each question; `provider::sign_in_needed` and `provider::rate_limited` are
+the errors it acts on. The manifest, and what each question means, are in
+Nora's `docs/provider-plugins.md`; `provider/fetch` uses protocol 2's
+streams.
+
 ## Rules for `apply`
 
 All lifecycle transitions run on one driver task, one at a time. `apply` runs
