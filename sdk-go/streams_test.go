@@ -251,8 +251,9 @@ func TestAClosedConnectionEndsEveryStream(t *testing.T) {
 	}
 }
 
-// streamPlugin's copy service answers at once, then copies its input
-// stream to its output stream; spill writes n bytes and ends or gives up.
+// streamPlugin's copy service, as a provider's fetch, reads its whole input,
+// answers, then writes it to its output stream; spill writes n bytes and
+// ends or gives up.
 type streamPlugin struct{ testPlugin }
 
 func (streamPlugin) Initialize(ctx context.Context, params InitializeParams) (InitializeResult, error) {
@@ -266,8 +267,12 @@ func (streamPlugin) CallService(ctx context.Context, params ServiceCallParams) (
 		if input == nil || output == nil {
 			return nil, &RPCError{Code: -32602, Message: "copy needs both streams"}
 		}
+		body, err := io.ReadAll(input)
+		if err != nil {
+			return nil, err
+		}
 		go func() {
-			if _, err := io.Copy(output, input); err != nil {
+			if _, err := output.Write(body); err != nil {
 				_ = output.Abort(nil)
 				return
 			}
@@ -399,19 +404,22 @@ func (host *streamingHost) call(t *testing.T, id uint64, method string, argument
 	}
 }
 
-func TestProtocolTwoAnswersFirstThenStreamsABodyLargerThanAnyFrame(t *testing.T) {
+func TestProtocolTwoReadsABodyAnswersThenStreamsOneLargerThanAnyFrame(t *testing.T) {
 	host := startStreamingHost(t, StreamsProtocolVersion)
-	input, _ := host.table.OpenWriter(CallKey{Local: true, ID: 2})
-	output, _ := host.table.OpenReader(CallKey{Local: true, ID: 2})
+	key := CallKey{Local: true, ID: 2}
+	input, _ := host.table.OpenWriter(key)
+	output, _ := host.table.OpenReader(key)
 	host.call(t, 2, "copy", `{}`, ptr(input.ID()), ptr(output.ID()))
-	if string(host.reply(t)["result"]) != `{"head":true}` {
-		t.Fatal("the head did not come first")
-	}
 	body := make([]byte, 3_000_000)
 	for i := range body {
 		body[i] = byte(i % 253)
 	}
 	go func() { _, _ = input.Write(body); _ = input.Close() }()
+	// the head comes once the input is in, before any of the body
+	if string(host.reply(t)["result"]) != `{"head":true}` {
+		t.Fatal("no head")
+	}
+	host.table.CloseWriters(key, &RPCError{Code: -32000, Message: "answered"})
 	copied, err := readAll(t, output)
 	if err != nil || !bytes.Equal(copied, body) {
 		t.Fatalf("copied %d bytes, %v", len(copied), err)
@@ -437,8 +445,12 @@ func TestACancelledStreamingCallLeavesThePluginServing(t *testing.T) {
 	input, _ := host.table.OpenWriter(CallKey{Local: true, ID: 2})
 	output, _ := host.table.OpenReader(CallKey{Local: true, ID: 2})
 	host.call(t, 2, "copy", `{}`, ptr(input.ID()), ptr(output.ID()))
-	host.reply(t)
+	// part of the input, then the call is cancelled mid-way
+	if _, err := input.Write(make([]byte, 10_000)); err != nil {
+		t.Fatal(err)
+	}
 	_ = host.send(map[string]any{"jsonrpc": "2.0", "method": "notifications/cancelled", "params": map[string]any{"requestId": 2}})
+	host.reply(t)
 	host.table.CloseCall(CallKey{Local: true, ID: 2}, &RPCError{Code: -32800, Message: "cancelled"})
 	host.call(t, 3, "echo", `{}`, nil, nil)
 	if string(host.reply(t)["id"]) != "3" {

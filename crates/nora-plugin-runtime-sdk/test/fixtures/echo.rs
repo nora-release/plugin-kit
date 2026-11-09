@@ -62,22 +62,19 @@ impl Plugin for Echo {
         context: PluginContext,
     ) -> Result<serde_json::Value, RpcError> {
         match params.method.as_str() {
-            // protocol 2: answers at once, then copies its input stream
-            // to its output stream
+            // protocol 2, as a provider's fetch: reads the whole input,
+            // answers with the head, then writes the body to its output
             "copy" => {
                 let (Some(mut input), Some(mut output)) =
                     (context.take_input_stream(), context.take_output_stream())
                 else {
                     return Err(RpcError::invalid_params("copy needs both streams"));
                 };
+                let body = input.read_to_end(64 * 1024 * 1024).await?;
                 tokio::spawn(async move {
-                    while let Some(chunk) = input.read().await {
-                        let Ok(chunk) = chunk else { return };
-                        if output.write(&chunk).await.is_err() {
-                            return;
-                        }
+                    if output.write(&body).await.is_ok() {
+                        let _ = output.finish().await;
                     }
-                    let _ = output.finish().await;
                 });
                 return Ok(json!({"head": true}));
             }

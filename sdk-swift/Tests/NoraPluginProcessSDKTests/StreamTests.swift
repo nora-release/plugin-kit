@@ -33,7 +33,7 @@ private final class Pair: @unchecked Sendable {
     }
 
     private func pump(_ frames: AsyncStream<JSONValue>, to table: StreamTable) {
-        Task { [weak self] in
+        _ = Task { [weak self] in
             for await frame in frames {
                 do {
                     if frame["method"] == .string("streams/data") {
@@ -85,7 +85,7 @@ private func pattern(_ count: Int, modulo: Int) -> Data {
     let writer = try pair.host.openWriter(call)
     let (reader, _) = try pair.plugin.accept(accepted, input: writer.id, output: nil)
     let sent = pattern(1_000_000, modulo: 251)
-    Task {
+    _ = Task {
         // a short frame first: the writer then has less credit than a chunk
         try await writer.write(sent.prefix(4096))
         try await writer.write(sent.dropFirst(4096))
@@ -150,8 +150,9 @@ private func pattern(_ count: Int, modulo: Int) -> Data {
     }
 }
 
-/// copy answers at once, then copies its input stream to its output stream;
-/// spill writes `bytes` bytes and ends, or gives up with `fail`.
+/// copy, as a provider's fetch, reads its whole input, answers, then writes
+/// it to its output stream; spill writes `bytes` bytes and ends, or gives
+/// up with `fail`.
 private struct StreamPlugin: ProcessPlugin {
     func initialize(_: InitializeParameters) async throws -> InitializeResult {
         InitializeResult(tools: [], services: ["example.echo"])
@@ -167,10 +168,9 @@ private struct StreamPlugin: ProcessPlugin {
             guard let input = PluginStreams.input(), let output = PluginStreams.output() else {
                 throw RPCError(code: -32602, message: "copy needs both streams")
             }
-            Task {
-                while let chunk = try await input.next() {
-                    try await output.write(chunk)
-                }
+            let body = try await input.readToEnd(limit: 64 * 1024 * 1024)
+            _ = Task {
+                try await output.write(body)
                 try await output.finish()
             }
             return .object(["head": .bool(true)])
@@ -236,7 +236,7 @@ private final class StreamingHost: @unchecked Sendable {
         let mailbox = mailbox
         let table = table
         let output = outputPipe.fileHandleForReading
-        Task.detached {
+        _ = Task.detached {
             var line = Data()
             while true {
                 let chunk = output.availableData
@@ -299,19 +299,20 @@ private final class StreamingHost: @unchecked Sendable {
     }
 }
 
-@Test func protocolTwoAnswersFirstThenStreamsABodyLargerThanAnyFrame() async throws {
+@Test func protocolTwoReadsABodyAnswersThenStreamsOneLargerThanAnyFrame() async throws {
     let host = try await StreamingHost(version: pluginStreamsProtocolVersion)
     defer { host.close() }
     let key = StreamCallKey(local: true, id: 2)
     let input = try host.table.openWriter(key)
     let output = try host.table.openReader(key)
     try host.call(2, "copy", input: input.id, output: output.id)
-    #expect(try await host.reply()["result"] == .object(["head": .bool(true)]))
     let body = pattern(1_500_000, modulo: 253)
-    Task {
+    _ = Task {
         try await input.write(body)
         try await input.finish()
     }
+    // the head comes once the input is in, before any of the body
+    #expect(try await host.reply()["result"] == .object(["head": .bool(true)]))
     let copied = try await withTimeout(20) { try await output.readToEnd(limit: 2_000_000) }
     #expect(copied == body)
 }

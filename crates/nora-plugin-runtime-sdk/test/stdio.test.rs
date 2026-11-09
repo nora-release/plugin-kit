@@ -275,7 +275,7 @@ const CALL: fn(u64) -> nora_plugin_runtime_sdk::streams::CallKey =
     |id| nora_plugin_runtime_sdk::streams::CallKey { local: true, id };
 
 #[tokio::test]
-async fn protocol_two_answers_first_then_streams_a_body_larger_than_any_frame() {
+async fn protocol_two_reads_a_body_answers_then_streams_one_larger_than_any_frame() {
     let mut host = StreamingHost::start(2).await;
     let input = host.table.open_writer(CALL(2)).unwrap();
     let mut output = host.table.open_reader(CALL(2)).unwrap();
@@ -286,8 +286,6 @@ async fn protocol_two_answers_first_then_streams_a_body_larger_than_any_frame() 
         }}),
     )
     .await;
-    // the head comes before any of the body is read
-    assert_eq!(host.reply().await["result"], json!({"head": true}));
     let body: Vec<u8> = (0..3_000_000u32).map(|i| (i % 253) as u8).collect();
     let expected = body.clone();
     let writing = tokio::spawn(async move {
@@ -295,6 +293,12 @@ async fn protocol_two_answers_first_then_streams_a_body_larger_than_any_frame() 
         input.write(&body).await.unwrap();
         input.finish().await.unwrap();
     });
+    // the head comes once the input is in, before any of the body
+    assert_eq!(host.reply().await["result"], json!({"head": true}));
+    host.table.close_writers(
+        CALL(2),
+        &nora_plugin_runtime_sdk::protocol::RpcError::new(-32000, "answered"),
+    );
     let copied = tokio::time::timeout(Duration::from_secs(20), output.read_to_end(4_000_000))
         .await
         .expect("the copy stalled")
@@ -327,9 +331,9 @@ async fn a_plugin_that_gives_up_mid_stream_ends_it_with_its_error() {
 }
 
 #[tokio::test]
-async fn a_cancelled_call_stops_its_output_and_the_plugin_serves_on() {
+async fn a_cancelled_call_stops_its_streams_and_the_plugin_serves_on() {
     let mut host = StreamingHost::start(2).await;
-    let input = host.table.open_writer(CALL(2)).unwrap();
+    let mut input = host.table.open_writer(CALL(2)).unwrap();
     let output = host.table.open_reader(CALL(2)).unwrap();
     host.send(
         json!({"jsonrpc":"2.0","id":2,"method":"services/call","params":{
@@ -338,9 +342,11 @@ async fn a_cancelled_call_stops_its_output_and_the_plugin_serves_on() {
         }}),
     )
     .await;
-    assert_eq!(host.reply().await["result"]["head"], true);
+    // part of the input, then the call is cancelled mid-way
+    input.write(&[1u8; 10_000]).await.unwrap();
     host.send(json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":2}}))
         .await;
+    assert_eq!(host.reply().await["error"]["code"], -32800);
     host.table.close_call(
         CALL(2),
         &nora_plugin_runtime_sdk::protocol::RpcError::new(-32800, "cancelled"),
