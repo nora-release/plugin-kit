@@ -32,10 +32,14 @@ struct Stored {
 }
 
 /// Reads and checks the manifest of a native plugin release ZIP: one `.app`,
-/// no path that leaves it, no link that escapes it, and its icon when named.
+/// beside it only a package manifest in Nora's format and its files, no path
+/// that leaves them, no link that escapes its folder, and its icon when named.
 ///
 /// The archive is parsed by hand, so split, ZIP64, and encrypted archives
 /// are refused instead of interpreted.
+/// The manifest in Nora's own format that may sit beside a native application.
+const PACKAGE_MANIFEST: &str = "nora-plugin.json";
+
 pub fn manifest_from_archive(data: &[u8]) -> Result<Value> {
     ensure(
         data.len() >= 22 && data.len() <= MAXIMUM_ARCHIVE_BYTES,
@@ -159,7 +163,7 @@ pub fn manifest_from_archive(data: &[u8]) -> Result<Value> {
             )?;
             links.insert(normalized);
         }
-        if parts[0] != "__MACOSX" && parts[1..].join("/") == MANIFEST_PATH {
+        if parts[0].ends_with(".app") && parts[1..].join("/") == MANIFEST_PATH {
             ensure(
                 manifest.is_none()
                     && kind != TYPE_LINK
@@ -183,15 +187,16 @@ pub fn manifest_from_archive(data: &[u8]) -> Result<Value> {
         }
         offset = next;
     }
+    let applications: Vec<&String> = roots.iter().filter(|root| root.ends_with(".app")).collect();
     ensure(
-        offset == end && roots.len() == 1 && manifest.is_some(),
-        "ZIP must contain one plugin folder and its Nora manifest",
-    )?;
-    let root = roots.into_iter().next().unwrap_or_default();
-    ensure(
-        root.ends_with(".app"),
+        offset == end && applications.len() == 1 && manifest.is_some(),
         "Native ZIP must contain one .app and its Nora manifest",
     )?;
+    ensure(
+        roots.len() == 1 || roots.contains(PACKAGE_MANIFEST),
+        "Files beside the .app need a nora-plugin.json package manifest",
+    )?;
+    let root = applications[0].clone();
     for path in &paths {
         let parts: Vec<&str> = path.split('/').collect();
         ensure(

@@ -315,6 +315,34 @@ fn icons_are_static_images() {
 }
 
 #[test]
+fn a_package_manifest_and_its_files_may_sit_beside_the_app() {
+    let inner = || file(MANIFEST_NAME, manifest().to_string());
+    assert_eq!(
+        manifest_from_archive(&zip(&[
+            inner(),
+            file("nora-plugin.json", "{}"),
+            file("tools/listIssues.json", "{}"),
+        ]))
+        .unwrap(),
+        manifest()
+    );
+    for beside in [
+        vec![file("tools/listIssues.json", "{}")],
+        vec![
+            file("nora-plugin.json", "{}"),
+            file(
+                "Other.app/Contents/Resources/nora-plugin.json",
+                manifest().to_string(),
+            ),
+        ],
+    ] {
+        let mut entries = vec![inner()];
+        entries.extend(beside);
+        assert!(manifest_from_archive(&zip(&entries)).is_err());
+    }
+}
+
+#[test]
 fn archives_hold_one_app_and_its_manifest() {
     assert_eq!(manifest_from_archive(&archive()).unwrap(), manifest());
     let with_icon = with(manifest(), json!({ "iconPath": "brand.svg" }));
