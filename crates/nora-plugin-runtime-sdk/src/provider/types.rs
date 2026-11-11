@@ -160,6 +160,18 @@ pub struct Model {
     pub apis: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
+    /// The reasoning efforts the model takes, as the provider names them
+    /// (`low`, `medium`, `high`, `xhigh`, `max`), weakest first; empty
+    /// when the provider doesn't say. Giving any makes it a reasoning model.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub efforts: Vec<String>,
+    /// The effort the provider uses when none is asked for, one of
+    /// `efforts`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_effort: Option<String>,
+    /// A line on what sets the model apart, such as a fast tier's price.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 impl Model {

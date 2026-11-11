@@ -294,3 +294,21 @@ fn rfc3339_writes_utc_dates() {
         "2000-02-29T00:00:00Z"
     );
 }
+
+#[test]
+fn a_model_names_its_efforts_its_default_and_what_sets_it_apart() {
+    let model = Model {
+        efforts: vec!["low".into(), "high".into()],
+        default_effort: Some("high".into()),
+        description: Some("2x the price".into()),
+        ..Model::new("m+fast")
+    };
+    assert_eq!(
+        serde_json::to_value(&model).unwrap(),
+        serde_json::json!({"id": "m+fast", "efforts": ["low", "high"], "defaultEffort": "high", "description": "2x the price"})
+    );
+    assert_eq!(
+        serde_json::to_value(Model::new("m")).unwrap(),
+        serde_json::json!({"id": "m"})
+    );
+}
